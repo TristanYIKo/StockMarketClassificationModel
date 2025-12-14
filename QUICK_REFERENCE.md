@@ -1,6 +1,10 @@
-# Quick Reference: Pruned Feature Set
+# Quick Reference: Classification Model
 
-## 60 Total Features
+## 83 Total Features for y_class_1d Prediction
+
+**Target:** `y_class_1d` → -1 (Sell), 0 (Hold), 1 (Buy)  
+**Threshold:** ±0.25 volatility-scaled returns  
+**Dataset:** `v_classification_dataset_1d` (25,907 rows)
 
 ### Technical (22)
 ```

@@ -1,8 +1,10 @@
-# Stock Market Classification Model - Context Data Extension
+# Stock Market Classification Model - Project Overview
 
 ## Summary
 
-This extension adds **high-ROI orthogonal data sources** to the ETF classification model for SPY, QQQ, DIA, IWM. All data is strictly **ET timezone aligned** with **zero future leakage**.
+Triple-barrier classification system for 1-day trading signals on SPY, QQQ, DIA, IWM. Uses 83 optimized features from technical indicators, macro data, and cross-asset proxies. All data is **ET timezone aligned** with **zero future leakage**.
+
+**Primary Target:** `y_class_1d` → -1 (Sell), 0 (Hold), 1 (Buy) using ±0.25 volatility threshold
 
 ## Architecture
 

@@ -1,22 +1,13 @@
 """
-Compute regression and classification targets with volatility scaling (v2.0 OPTIMIZED).
+Compute classification targets using triple-barrier method.
+
+PRIMARY TARGET: y_class_1d
+- Triple-barrier classification: -1 (Sell), 0 (Hold), 1 (Buy)
+- Uses volatility-scaled returns with ±0.25 threshold
+- Prevents over-trading by explicitly modeling the Hold class
 
 CRITICAL: All targets use FORWARD-SHIFTED data (no leakage).
 - future_1d = close.shift(-1) uses NEXT day's close
-- future_5d = close.shift(-5) uses 5 days ahead close
-
-PRIMARY REGRESSION TARGETS (use these):
-- primary_target: Alias for y_1d_vol_clip (default for modeling)
-- y_1d_vol_clip: 1d vol-scaled + clipped to ±3 (RECOMMENDED)
-- y_5d_vol_clip: 5d vol-scaled + clipped to ±3 (secondary)
-
-Diagnostic regression targets (for research):
-- y_1d_raw, y_5d_raw: Raw log returns
-- y_1d_vol, y_5d_vol: Volatility-scaled (unclipped)
-- y_1d_clipped, y_5d_clipped: Clipped raw returns
-
-Classification targets (legacy):
-- y_1d, y_5d, y_thresh: Binary up/down labels
 """
 
 import numpy as np
@@ -29,20 +20,20 @@ def compute_labels(
     y_thresh: float = 0.002
 ) -> pd.DataFrame:
     """
-    Compute regression-friendly targets with volatility scaling (v2.0 OPTIMIZED).
+    Compute classification target using triple-barrier method.
     
-    PRIMARY TARGET: primary_target (y_1d_vol_clip)
-    - Volatility-scaled 1-day return clipped to ±3σ
-    - Use this for default modeling
+    PRIMARY TARGET: y_class_1d
+    - 1 (Buy): y_1d_vol > +0.25
+    - 0 (Hold): y_1d_vol between -0.25 and +0.25
+    - -1 (Sell): y_1d_vol < -0.25
     
     Args:
         close: Close prices (chronological)
         vol_20: 20-day rolling volatility (for scaling)
-        y_thresh: Threshold for binary classification (default 0.2%)
+        y_thresh: Legacy parameter, kept for backwards compatibility
     
     Returns:
-        DataFrame with PRIMARY targets (primary_target, y_1d_vol_clip, y_5d_vol_clip)
-        and diagnostic targets for comparison
+        DataFrame with y_class_1d and supporting diagnostic columns
     """
     # Forward-shifted closes (FUTURE data, no leakage)
     future_1d = close.shift(-1)
@@ -72,7 +63,18 @@ def compute_labels(
     # Primary target alias (for default modeling)
     primary_target = y_1d_vol_clip
     
-    # Classification targets (legacy, for comparison)
+    # TRIPLE-BARRIER CLASSIFICATION TARGET (v2.1 NEW)
+    # Uses volatility-scaled returns to separate signal from noise
+    # Three classes: 1 (Buy), 0 (Hold), -1 (Sell)
+    # Threshold: ±0.25 standard deviations
+    y_class_1d = pd.Series(0, index=y_1d_vol.index, dtype=int)  # Default: Hold
+    y_class_1d[y_1d_vol > 0.25] = 1   # Significant up move → Buy
+    y_class_1d[y_1d_vol < -0.25] = -1  # Significant down move → Sell
+    # NaN handling: keep as 0 (will be set to NaN in final DataFrame)
+    y_class_1d[y_1d_vol.isna()] = 0
+    y_class_1d = y_class_1d.where(y_1d_vol.notna(), None)  # NaN where input is NaN
+    
+    # Binary classification targets (legacy, for comparison)
     y_1d_class = (future_1d > close).astype(int)
     y_5d_class = (future_5d > close).astype(int)
     ret_1d = (future_1d / close - 1.0)
@@ -84,6 +86,9 @@ def compute_labels(
         "y_1d_vol_clip": y_1d_vol_clip,
         "y_5d_vol_clip": y_5d_vol_clip,
         
+        # TRIPLE-BARRIER CLASSIFICATION TARGET (NEW)
+        "y_class_1d": y_class_1d,
+        
         # Diagnostic targets
         "y_1d_raw": y_1d_raw,
         "y_5d_raw": y_5d_raw,
@@ -92,7 +97,7 @@ def compute_labels(
         "y_1d_clipped": y_1d_clipped,
         "y_5d_clipped": y_5d_clipped,
         
-        # Classification targets (LEGACY)
+        # Binary classification targets (LEGACY)
         "y_1d": y_1d_class,
         "y_5d": y_5d_class,
         "y_thresh": y_thresh_class,

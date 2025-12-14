@@ -60,12 +60,10 @@ def upsert_features_json(db: SupabaseDB, asset_id: str, features_df: pd.DataFram
 
 def upsert_labels(db: SupabaseDB, asset_id: str, labels_df: pd.DataFrame):
     """
-    Upsert regression and classification labels.
+    Upsert classification labels.
     
-    Expects columns (optimized v2.0):
-    - PRIMARY: primary_target, y_1d_vol_clip, y_5d_vol_clip
-    - Diagnostic: y_1d_raw, y_5d_raw, y_1d_vol, y_5d_vol, y_1d_clipped, y_5d_clipped
-    - Classification: y_1d, y_5d, y_thresh
+    PRIMARY: y_class_1d (triple-barrier classification: -1, 0, 1)
+    Diagnostic columns kept for backwards compatibility but not used in modeling.
     """
     rows = []
     for r in labels_df.itertuples():
@@ -76,6 +74,8 @@ def upsert_labels(db: SupabaseDB, asset_id: str, labels_df: pd.DataFrame):
             float(r.primary_target) if hasattr(r, 'primary_target') and pd.notnull(r.primary_target) else None,
             float(r.y_1d_vol_clip) if hasattr(r, 'y_1d_vol_clip') and pd.notnull(r.y_1d_vol_clip) else None,
             float(r.y_5d_vol_clip) if hasattr(r, 'y_5d_vol_clip') and pd.notnull(r.y_5d_vol_clip) else None,
+            # CLASSIFICATION TARGET (triple-barrier)
+            int(r.y_class_1d) if hasattr(r, 'y_class_1d') and pd.notnull(r.y_class_1d) else None,
             # Diagnostic regression targets
             float(r.y_1d_raw) if hasattr(r, 'y_1d_raw') and pd.notnull(r.y_1d_raw) else None,
             float(r.y_5d_raw) if hasattr(r, 'y_5d_raw') and pd.notnull(r.y_5d_raw) else None,
@@ -83,7 +83,7 @@ def upsert_labels(db: SupabaseDB, asset_id: str, labels_df: pd.DataFrame):
             float(r.y_5d_vol) if hasattr(r, 'y_5d_vol') and pd.notnull(r.y_5d_vol) else None,
             float(r.y_1d_clipped) if hasattr(r, 'y_1d_clipped') and pd.notnull(r.y_1d_clipped) else None,
             float(r.y_5d_clipped) if hasattr(r, 'y_5d_clipped') and pd.notnull(r.y_5d_clipped) else None,
-            # Classification targets (legacy)
+            # Binary classification targets (legacy)
             int(r.y_1d) if pd.notnull(r.y_1d) else None,
             int(r.y_5d) if pd.notnull(r.y_5d) else None,
             int(r.y_thresh) if pd.notnull(r.y_thresh) else None,

@@ -3,6 +3,10 @@ from datetime import date
 import os
 import pandas as pd
 import pandas_market_calendars as mcal
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from .config import ETLConfig
 from .supabase_client import SupabaseDB

@@ -1,13 +1,18 @@
-# Quick Start Guide
+# Quick Start Guide - Classification Model
+
+Get your 1-day trading signal classifier running in 5 steps.
 
 ## Step 1: Set Environment Variables
 
-```powershell
-# Supabase connection string
-setx SUPABASE_DB_URL "postgresql://postgres:your_password@db.your_project.supabase.co:5432/postgres"
+Create a `.env` file in the project root:
+
+```bash
+# Supabase Configuration
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your_anon_key
 
 # FRED API key (get free key at https://fred.stlouisfed.org/docs/api/api_key.html)
-setx FRED_API_KEY "your_fred_api_key_here"
+FRED_API_KEY=your_fred_api_key_here
 ```
 
 **Important**: Restart your terminal/PowerShell after setting environment variables.
@@ -55,24 +60,27 @@ python -m etl.main --start 2000-01-01 --end 2025-12-12 --mode backfill
 python -m etl.main --start 2025-11-01 --end 2025-12-12 --mode incremental
 ```
 
-## Step 6: Verify Data
-
-Open Supabase SQL Editor and run queries from `example_queries.sql`:
+## Step 6: Query Classification Dataset
 
 ```sql
--- Check data coverage
-select 
-  a.symbol,
-  count(distinct db.date) as bar_days,
-  count(distinct f.date) as feature_days,
-  count(distinct l.date) as label_days
-from public.assets a
-left join public.daily_bars db on db.asset_id = a.id
-left join public.features_daily f on f.asset_id = a.id
-left join public.labels_daily l on l.asset_id = a.id
-where a.symbol in ('SPY', 'QQQ', 'DIA', 'IWM')
-group by a.symbol;
+-- Check class distribution
+select * from public.v_classification_stats_1d;
+
+-- Sample recent predictions
+select symbol, date, y_class_1d, rsi_14, macd_hist
+from public.v_classification_dataset_1d
+where symbol = 'SPY'
+order by date desc
+limit 10;
+
+-- Full dataset for modeling (25,907 rows, 83 features + target)
+select * from public.v_classification_dataset_1d;
 ```
+
+**Expected Class Distribution:**
+- Buy (1): ~42%
+- Sell (-1): ~36%  
+- Hold (0): ~22%
 
 Expected results for SPY (2000-2025):
 - bar_days: ~6,300
