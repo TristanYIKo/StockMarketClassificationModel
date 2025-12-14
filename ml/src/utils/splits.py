@@ -17,7 +17,8 @@ def create_time_splits(
     val_start: str,
     val_end: str,
     test_start: str,
-    test_end: str
+    test_end: str,
+    target_col: str = 'y_class_1d'
 ) -> Dict[str, pd.DataFrame]:
     """
     Create time-based train/val/test splits.
@@ -62,7 +63,7 @@ def create_time_splits(
     logger.info(f"  Rows: {len(train_df):,}")
     logger.info(f"  Symbols: {sorted(train_df['symbol'].unique())}")
     logger.info(f"  Class distribution:")
-    for cls, count in train_df['y_class_1d'].value_counts().sort_index().items():
+    for cls, count in train_df[target_col].value_counts().sort_index().items():
         pct = 100 * count / len(train_df)
         logger.info(f"    {cls:2d}: {count:5d} ({pct:5.2f}%)")
     
@@ -70,7 +71,7 @@ def create_time_splits(
     logger.info(f"  Rows: {len(val_df):,}")
     logger.info(f"  Symbols: {sorted(val_df['symbol'].unique())}")
     logger.info(f"  Class distribution:")
-    for cls, count in val_df['y_class_1d'].value_counts().sort_index().items():
+    for cls, count in val_df[target_col].value_counts().sort_index().items():
         pct = 100 * count / len(val_df)
         logger.info(f"    {cls:2d}: {count:5d} ({pct:5.2f}%)")
     
@@ -78,7 +79,7 @@ def create_time_splits(
     logger.info(f"  Rows: {len(test_df):,}")
     logger.info(f"  Symbols: {sorted(test_df['symbol'].unique())}")
     logger.info(f"  Class distribution:")
-    for cls, count in test_df['y_class_1d'].value_counts().sort_index().items():
+    for cls, count in test_df[target_col].value_counts().sort_index().items():
         pct = 100 * count / len(test_df)
         logger.info(f"    {cls:2d}: {count:5d} ({pct:5.2f}%)")
     
@@ -99,32 +100,34 @@ def create_time_splits(
     }
 
 
-def get_feature_columns(df: pd.DataFrame) -> list:
+def get_feature_columns(df: pd.DataFrame, target_col: str = 'y_class_1d') -> list:
     """
     Get list of feature columns (exclude metadata and target).
     
     Args:
         df: DataFrame with all columns
+        target_col: Name of target column to exclude
         
     Returns:
         List of feature column names
     """
-    exclude_cols = ['symbol', 'date', 'y_class_1d']
+    exclude_cols = ['symbol', 'date', target_col]
     feature_cols = [c for c in df.columns if c not in exclude_cols]
     return feature_cols
 
 
-def prepare_X_y(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
+def prepare_X_y(df: pd.DataFrame, target_col: str = 'y_class_1d') -> Tuple[pd.DataFrame, pd.Series]:
     """
     Split DataFrame into features (X) and target (y).
     
     Args:
         df: DataFrame with features and target
+        target_col: Name of target column
         
     Returns:
         (X, y) where X is features DataFrame and y is target Series
     """
-    feature_cols = get_feature_columns(df)
+    feature_cols = get_feature_columns(df, target_col)
     X = df[feature_cols].copy()
-    y = df['y_class_1d'].copy()
+    y = df[target_col].copy()
     return X, y

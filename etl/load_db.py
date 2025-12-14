@@ -74,8 +74,9 @@ def upsert_labels(db: SupabaseDB, asset_id: str, labels_df: pd.DataFrame):
             float(r.primary_target) if hasattr(r, 'primary_target') and pd.notnull(r.primary_target) else None,
             float(r.y_1d_vol_clip) if hasattr(r, 'y_1d_vol_clip') and pd.notnull(r.y_1d_vol_clip) else None,
             float(r.y_5d_vol_clip) if hasattr(r, 'y_5d_vol_clip') and pd.notnull(r.y_5d_vol_clip) else None,
-            # CLASSIFICATION TARGET (triple-barrier)
+            # CLASSIFICATION TARGETS (triple-barrier)
             int(r.y_class_1d) if hasattr(r, 'y_class_1d') and pd.notnull(r.y_class_1d) else None,
+            int(r.y_class_5d) if hasattr(r, 'y_class_5d') and pd.notnull(r.y_class_5d) else None,
             # Diagnostic regression targets
             float(r.y_1d_raw) if hasattr(r, 'y_1d_raw') and pd.notnull(r.y_1d_raw) else None,
             float(r.y_5d_raw) if hasattr(r, 'y_5d_raw') and pd.notnull(r.y_5d_raw) else None,

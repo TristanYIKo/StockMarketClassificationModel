@@ -127,7 +127,7 @@ class SupabaseDB:
         """
         Upsert labels with regression and classification targets (v2.1 with triple-barrier).
         
-        Row format: (asset_id, date, primary_target, y_1d_vol_clip, y_5d_vol_clip, y_class_1d,
+        Row format: (asset_id, date, primary_target, y_1d_vol_clip, y_5d_vol_clip, y_class_1d, y_class_5d,
                      y_1d_raw, y_5d_raw, y_1d_vol, y_5d_vol, 
                      y_1d_clipped, y_5d_clipped, y_1d, y_5d, y_thresh)
         """
@@ -139,19 +139,20 @@ class SupabaseDB:
                 "primary_target": row[2],
                 "y_1d_vol_clip": row[3],
                 "y_5d_vol_clip": row[4],
-                # CLASSIFICATION target (triple-barrier)
+                # CLASSIFICATION targets (triple-barrier)
                 "y_class_1d": row[5],
+                "y_class_5d": row[6],
                 # Diagnostic regression targets
-                "y_1d_raw": row[6],
-                "y_5d_raw": row[7],
-                "y_1d_vol": row[8],
-                "y_5d_vol": row[9],
-                "y_1d_clipped": row[10],
-                "y_5d_clipped": row[11],
+                "y_1d_raw": row[7],
+                "y_5d_raw": row[8],
+                "y_1d_vol": row[9],
+                "y_5d_vol": row[10],
+                "y_1d_clipped": row[11],
+                "y_5d_clipped": row[12],
                 # Binary classification targets (legacy)
-                "y_1d": row[12],
-                "y_5d": row[13],
-                "y_thresh": row[14]
+                "y_1d": row[13],
+                "y_5d": row[14],
+                "y_thresh": row[15]
             }
             for row in rows
         ]

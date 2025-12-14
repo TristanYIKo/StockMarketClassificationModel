@@ -74,6 +74,14 @@ def compute_labels(
     y_class_1d[y_1d_vol.isna()] = 0
     y_class_1d = y_class_1d.where(y_1d_vol.notna(), None)  # NaN where input is NaN
     
+    # 5-DAY CLASSIFICATION TARGET (for weekly predictions)
+    # Same triple-barrier method but predicting 5 days ahead
+    y_class_5d = pd.Series(0, index=y_5d_vol.index, dtype=int)  # Default: Hold
+    y_class_5d[y_5d_vol > 0.25] = 1   # Significant up move → Buy
+    y_class_5d[y_5d_vol < -0.25] = -1  # Significant down move → Sell
+    y_class_5d[y_5d_vol.isna()] = 0
+    y_class_5d = y_class_5d.where(y_5d_vol.notna(), None)  # NaN where input is NaN
+    
     # Binary classification targets (legacy, for comparison)
     y_1d_class = (future_1d > close).astype(int)
     y_5d_class = (future_5d > close).astype(int)
@@ -86,8 +94,9 @@ def compute_labels(
         "y_1d_vol_clip": y_1d_vol_clip,
         "y_5d_vol_clip": y_5d_vol_clip,
         
-        # TRIPLE-BARRIER CLASSIFICATION TARGET (NEW)
-        "y_class_1d": y_class_1d,
+        # TRIPLE-BARRIER CLASSIFICATION TARGETS
+        "y_class_1d": y_class_1d,  # 1-day (next day)
+        "y_class_5d": y_class_5d,  # 5-day (weekly)
         
         # Diagnostic targets
         "y_1d_raw": y_1d_raw,
