@@ -1,0 +1,93 @@
+# Model Training Configuration
+
+# Data splits (time-based, no overlap)
+splits:
+  train_start: "2000-02-01"
+  train_end: "2023-12-31"
+  val_start: "2024-01-01"
+  val_end: "2024-12-31"
+  test_start: "2025-01-01"
+  test_end: "2025-12-05"
+
+# Preprocessing
+preprocessing:
+  missing_threshold: 0.30  # Drop features with >30% missing in train
+  imputation_strategy: "median"  # For non-tree models
+  scale_features: false  # Only for logreg
+  
+# Target mapping (internal: 0,1,2 for sklearn)
+target:
+  class_mapping:
+    -1: 0  # Sell
+    0: 1   # Hold
+    1: 2   # Buy
+  class_names: ["Sell", "Hold", "Buy"]
+
+# Models to train
+models:
+  logistic_regression:
+    enabled: true
+    params:
+      max_iter: 1000
+      class_weight: "balanced"
+      solver: "lbfgs"
+      multi_class: "multinomial"
+      
+  random_forest:
+    enabled: true
+    params:
+      n_estimators: 100
+      max_depth: 10
+      min_samples_split: 50
+      min_samples_leaf: 20
+      class_weight: "balanced"
+      n_jobs: -1
+      random_state: 42
+      
+  lightgbm:
+    enabled: true
+    params:
+      objective: "multiclass"
+      num_class: 3
+      boosting_type: "gbdt"
+      num_leaves: 31
+      max_depth: 8
+      learning_rate: 0.05
+      n_estimators: 200
+      min_child_samples: 50
+      subsample: 0.8
+      colsample_bytree: 0.8
+      reg_alpha: 0.1
+      reg_lambda: 0.1
+      n_jobs: -1
+      random_state: 42
+      verbose: -1
+      
+  xgboost:
+    enabled: true
+    params:
+      objective: "multi:softprob"
+      num_class: 3
+      max_depth: 6
+      learning_rate: 0.05
+      n_estimators: 200
+      min_child_weight: 5
+      subsample: 0.8
+      colsample_bytree: 0.8
+      reg_alpha: 0.1
+      reg_lambda: 1.0
+      n_jobs: -1
+      random_state: 42
+      eval_metric: "mlogloss"
+      
+# Metrics to track
+metrics:
+  primary: "macro_f1"  # Primary metric for model selection
+  track:
+    - accuracy
+    - macro_f1
+    - per_class_precision
+    - per_class_recall
+    - per_class_f1
+    - confusion_matrix
+    - action_accuracy  # Accuracy on non-hold days only
