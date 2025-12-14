@@ -29,14 +29,35 @@ import lightgbm as lgb
 import xgboost as xgb
 
 
+class XGBWrapper:
+    """Wrapper for XGBoost that handles label mapping for classification."""
+    def __init__(self, model, label_mapping):
+        self.model = model
+        self.label_mapping = label_mapping  # {0: -1, 1: 0, 2: 1}
+    
+    def predict(self, X):
+        # Predict with mapped labels (0,1,2) and convert back to (-1,0,1)
+        preds_mapped = self.model.predict(X)
+        return np.array([self.label_mapping[int(p)] for p in preds_mapped])
+    
+    def predict_proba(self, X):
+        return self.model.predict_proba(X)
+
+
 def setup_logging():
     """Configure logging."""
+    # Create artifacts directory if it doesn't exist
+    artifacts_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'artifacts')
+    os.makedirs(artifacts_dir, exist_ok=True)
+    
+    log_path = os.path.join(artifacts_dir, 'training.log')
+    
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.StreamHandler(),
-            logging.FileHandler('ml/artifacts/training.log', mode='w')
+            logging.FileHandler(log_path, mode='w')
         ]
     )
     return logging.getLogger(__name__)
@@ -56,12 +77,12 @@ def train_logistic_regression(X_train, y_train, class_weights, config):
     logger.info("TRAINING: LOGISTIC REGRESSION")
     logger.info("=" * 70)
     
-    params = config['models']['logistic_regression']
+    params = config['models']['logistic_regression']['params']
     
     model = LogisticRegression(
-        max_iter=params['max_iter'],
-        class_weight='balanced',
-        random_state=params['random_state'],
+        max_iter=params.get('max_iter', 1000),
+        class_weight=params.get('class_weight', 'balanced'),
+        random_state=params.get('random_state', 42),
         n_jobs=-1
     )
     
@@ -78,14 +99,14 @@ def train_random_forest(X_train, y_train, class_weights, config):
     logger.info("TRAINING: RANDOM FOREST")
     logger.info("=" * 70)
     
-    params = config['models']['random_forest']
+    params = config['models']['random_forest']['params']
     
     model = RandomForestClassifier(
-        n_estimators=params['n_estimators'],
-        max_depth=params['max_depth'],
-        min_samples_split=params['min_samples_split'],
-        class_weight='balanced',
-        random_state=params['random_state'],
+        n_estimators=params.get('n_estimators', 100),
+        max_depth=params.get('max_depth', 10),
+        min_samples_split=params.get('min_samples_split', 50),
+        class_weight=params.get('class_weight', 'balanced'),
+        random_state=params.get('random_state', 42),
         n_jobs=-1
     )
     
@@ -102,15 +123,15 @@ def train_lightgbm(X_train, y_train, class_weights, config):
     logger.info("TRAINING: LIGHTGBM")
     logger.info("=" * 70)
     
-    params = config['models']['lightgbm']
+    params = config['models']['lightgbm']['params']
     
     model = lgb.LGBMClassifier(
-        n_estimators=params['n_estimators'],
-        learning_rate=params['learning_rate'],
-        max_depth=params['max_depth'],
-        num_leaves=params['num_leaves'],
+        n_estimators=params.get('n_estimators', 200),
+        learning_rate=params.get('learning_rate', 0.05),
+        max_depth=params.get('max_depth', 8),
+        num_leaves=params.get('num_leaves', 31),
         class_weight='balanced',
-        random_state=params['random_state'],
+        random_state=params.get('random_state', 42),
         verbosity=-1,
         n_jobs=-1
     )
@@ -128,32 +149,40 @@ def train_xgboost(X_train, y_train, class_weights, config):
     logger.info("TRAINING: XGBOOST")
     logger.info("=" * 70)
     
-    params = config['models']['xgboost']
+    params = config['models']['xgboost']['params']
     
-    # Convert class weights to sample weights
-    sample_weights = np.array([class_weights[y] for y in y_train])
+    # XGBoost requires labels to be 0-indexed
+    # Map: -1 -> 0, 0 -> 1, 1 -> 2
+    y_train_mapped = y_train.map({-1: 0, 0: 1, 1: 2})
+    
+    # Convert class weights to sample weights (use mapped labels for indexing)
+    class_weights_mapped = {0: class_weights[-1], 1: class_weights[0], 2: class_weights[1]}
+    sample_weights = np.array([class_weights_mapped[y] for y in y_train_mapped])
     
     model = xgb.XGBClassifier(
-        n_estimators=params['n_estimators'],
-        learning_rate=params['learning_rate'],
-        max_depth=params['max_depth'],
-        random_state=params['random_state'],
+        n_estimators=params.get('n_estimators', 200),
+        learning_rate=params.get('learning_rate', 0.05),
+        max_depth=params.get('max_depth', 6),
+        random_state=params.get('random_state', 42),
         n_jobs=-1,
         tree_method='hist'
     )
     
-    model.fit(X_train, y_train, sample_weight=sample_weights)
+    model.fit(X_train, y_train_mapped, sample_weight=sample_weights)
     logger.info("XGBoost trained successfully")
     
-    return model
+    # Wrap model to handle label mapping
+    label_mapping = {0: -1, 1: 0, 2: 1}
+    return XGBWrapper(model, label_mapping)
 
 
 def save_artifacts(model, preprocessor, model_name, config, metrics, feature_names):
     """Save trained model and metadata."""
     logger = logging.getLogger(__name__)
     
-    # Create artifacts directory
-    model_dir = f"ml/artifacts/models/{model_name}"
+    # Create artifacts directory (relative to script location)
+    artifacts_base = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'artifacts')
+    model_dir = os.path.join(artifacts_base, 'models', model_name)
     os.makedirs(model_dir, exist_ok=True)
     
     # Save model
@@ -186,7 +215,12 @@ def main():
     """Main training pipeline."""
     # Parse arguments
     parser = argparse.ArgumentParser(description='Train classification models')
-    parser.add_argument('--config', type=str, default='ml/config/model_config.yaml',
+    
+    # Get default config path relative to script location
+    script_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+    default_config = os.path.join(script_dir, 'config', 'model_config.yaml')
+    
+    parser.add_argument('--config', type=str, default=default_config,
                         help='Path to config file')
     parser.add_argument('--data_source', type=str, default='csv',
                         choices=['csv', 'supabase'],
@@ -219,12 +253,12 @@ def main():
     # Create time-based splits
     splits = create_time_splits(
         df,
-        train_start=config['data']['train_start'],
-        train_end=config['data']['train_end'],
-        val_start=config['data']['val_start'],
-        val_end=config['data']['val_end'],
-        test_start=config['data']['test_start'],
-        test_end=config['data']['test_end']
+        train_start=config['splits']['train_start'],
+        train_end=config['splits']['train_end'],
+        val_start=config['splits']['val_start'],
+        val_end=config['splits']['val_end'],
+        test_start=config['splits']['test_start'],
+        test_end=config['splits']['test_end']
     )
     
     # Prepare X, y for each split
@@ -238,9 +272,9 @@ def main():
     logger.info("=" * 70)
     
     preprocessor = TimeSeriesPreprocessor(
-        drop_features_threshold=config['preprocessing']['drop_features_threshold'],
+        drop_features_threshold=config['preprocessing']['missing_threshold'],
         imputation_strategy=config['preprocessing']['imputation_strategy'],
-        scaling=config['preprocessing']['scaling']
+        scaling=config['preprocessing']['scale_features']
     )
     
     X_train_processed = preprocessor.fit_transform(X_train)
@@ -259,27 +293,30 @@ def main():
     
     target_names = ['Sell (-1)', 'Hold (0)', 'Buy (1)']
     
+    # Create figures directory once
+    figures_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'artifacts', 'figures')
+    os.makedirs(figures_dir, exist_ok=True)
+    
     # Logistic Regression
     if 'logistic_regression' in config['models']:
         model_name = 'logistic_regression'
         model = train_logistic_regression(X_train_processed, y_train, class_weights, config)
         models[model_name] = model
         
-        # Evaluate
         train_metrics = evaluate_model(
             model, X_train_processed, y_train, 'train',
             target_names=target_names,
-            save_dir='ml/artifacts/figures'
+            save_dir=figures_dir
         )
         val_metrics = evaluate_model(
             model, X_val_processed, y_val, 'val',
             target_names=target_names,
-            save_dir='ml/artifacts/figures'
+            save_dir=figures_dir
         )
         test_metrics = evaluate_model(
             model, X_test_processed, y_test, 'test',
             target_names=target_names,
-            save_dir='ml/artifacts/figures'
+            save_dir=figures_dir
         )
         
         # Store results
@@ -304,17 +341,17 @@ def main():
         train_metrics = evaluate_model(
             model, X_train_processed, y_train, 'train',
             target_names=target_names,
-            save_dir='ml/artifacts/figures'
+            save_dir=figures_dir
         )
         val_metrics = evaluate_model(
             model, X_val_processed, y_val, 'val',
             target_names=target_names,
-            save_dir='ml/artifacts/figures'
+            save_dir=figures_dir
         )
         test_metrics = evaluate_model(
             model, X_test_processed, y_test, 'test',
             target_names=target_names,
-            save_dir='ml/artifacts/figures'
+            save_dir=figures_dir
         )
         
         all_results[model_name] = {
@@ -337,17 +374,17 @@ def main():
         train_metrics = evaluate_model(
             model, X_train_processed, y_train, 'train',
             target_names=target_names,
-            save_dir='ml/artifacts/figures'
+            save_dir=figures_dir
         )
         val_metrics = evaluate_model(
             model, X_val_processed, y_val, 'val',
             target_names=target_names,
-            save_dir='ml/artifacts/figures'
+            save_dir=figures_dir
         )
         test_metrics = evaluate_model(
             model, X_test_processed, y_test, 'test',
             target_names=target_names,
-            save_dir='ml/artifacts/figures'
+            save_dir=figures_dir
         )
         
         all_results[model_name] = {
@@ -370,17 +407,17 @@ def main():
         train_metrics = evaluate_model(
             model, X_train_processed, y_train, 'train',
             target_names=target_names,
-            save_dir='ml/artifacts/figures'
+            save_dir=figures_dir
         )
         val_metrics = evaluate_model(
             model, X_val_processed, y_val, 'val',
             target_names=target_names,
-            save_dir='ml/artifacts/figures'
+            save_dir=figures_dir
         )
         test_metrics = evaluate_model(
             model, X_test_processed, y_test, 'test',
             target_names=target_names,
-            save_dir='ml/artifacts/figures'
+            save_dir=figures_dir
         )
         
         all_results[model_name] = {
@@ -398,12 +435,14 @@ def main():
     logger.info("\n" + "=" * 70)
     logger.info("FINAL COMPARISON")
     logger.info("=" * 70)
-    compare_models(all_results, save_path='ml/artifacts/figures/model_comparison.png')
+    comparison_path = os.path.join(figures_dir, 'model_comparison.png')
+    compare_models(all_results, save_path=comparison_path)
     
     logger.info("\n" + "=" * 70)
     logger.info("TRAINING COMPLETE")
     logger.info("=" * 70)
-    logger.info("Artifacts saved to ml/artifacts/")
+    artifacts_base = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'artifacts')
+    logger.info(f"Artifacts saved to {artifacts_base}")
 
 
 if __name__ == '__main__':
