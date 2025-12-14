@@ -70,7 +70,7 @@ select
   (fp.feature_json->>'sma_200')::numeric as sma_200,
   (fp.feature_json->>'ema_20')::numeric as ema_20,
   (fp.feature_json->>'ema_50')::numeric as ema_50,
-  (fp.feature_json->>'sma20_gt_sma50')::int as sma20_gt_sma50,
+  (fp.feature_json->>'sma20_gt_sma50')::numeric::int as sma20_gt_sma50,
   
   -- Volume
   (fp.feature_json->>'volume_z')::numeric as volume_z,
@@ -80,8 +80,8 @@ select
   (fp.feature_json->>'dd_60')::numeric as dd_60,
   
   -- Calendar
-  (fp.feature_json->>'dow')::int as dow,
-  (fp.feature_json->>'days_since_prev')::int as days_since_prev,
+  (fp.feature_json->>'dow')::numeric::int as dow,
+  (fp.feature_json->>'days_since_prev')::numeric::int as days_since_prev,
   
   -- Overnight/Intraday
   (fp.feature_json->>'overnight_return')::numeric as overnight_return,
@@ -105,7 +105,7 @@ select
   (fp.feature_json->>'hy_oas_level')::numeric as hy_oas_level,
   (fp.feature_json->>'hy_oas_change_1d')::numeric as hy_oas_change_1d,
   (fp.feature_json->>'hy_oas_change_5d')::numeric as hy_oas_change_5d,
-  (fp.feature_json->>'liquidity_expanding')::int as liquidity_expanding,
+  (fp.feature_json->>'liquidity_expanding')::numeric::int as liquidity_expanding,
   (fp.feature_json->>'fed_bs_chg_pct')::numeric as fed_bs_chg_pct,
   (fp.feature_json->>'rrp_level')::numeric as rrp_level,
   (fp.feature_json->>'rrp_chg_pct_5d')::numeric as rrp_chg_pct_5d,
@@ -143,15 +143,15 @@ select
   (fp.feature_json->>'yield_curve_slope_lag1')::numeric as yield_curve_slope_lag1,
   
   -- Regime flags
-  (fp.feature_json->>'high_vol_regime')::int as high_vol_regime,
-  (fp.feature_json->>'curve_inverted')::int as curve_inverted,
-  (fp.feature_json->>'credit_stress')::int as credit_stress,
-  (fp.feature_json->>'liquidity_expanding_regime')::int as liquidity_expanding_regime,
+  (fp.feature_json->>'high_vol_regime')::numeric::int as high_vol_regime,
+  (fp.feature_json->>'curve_inverted')::numeric::int as curve_inverted,
+  (fp.feature_json->>'credit_stress')::numeric::int as credit_stress,
+  (fp.feature_json->>'liquidity_expanding_regime')::numeric::int as liquidity_expanding_regime,
   
   -- Event flags
-  (fp.feature_json->>'is_fomc')::int as is_fomc,
-  (fp.feature_json->>'is_cpi_release')::int as is_cpi_release,
-  (fp.feature_json->>'is_nfp_release')::int as is_nfp_release
+  (fp.feature_json->>'is_fomc')::numeric::int as is_fomc,
+  (fp.feature_json->>'is_cpi_release')::numeric::int as is_cpi_release,
+  (fp.feature_json->>'is_nfp_release')::numeric::int as is_nfp_release
   
 from public.daily_bars db
 join public.assets a on a.id = db.asset_id

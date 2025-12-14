@@ -186,6 +186,12 @@ def compute_fred_derived_features(macro_dict: Dict[str, pd.DataFrame]) -> pd.Dat
     
     merged = merged.sort_values("date")
     
+    # Rename raw FRED series to lowercase for consistency
+    if "DGS10" in merged.columns:
+        merged["dgs10"] = merged["DGS10"]
+    if "DGS2" in merged.columns:
+        merged["dgs2"] = merged["DGS2"]
+    
     # Derived features
     if "DGS10" in merged.columns and "DGS2" in merged.columns:
         merged["yield_curve_slope"] = merged["DGS10"] - merged["DGS2"]
