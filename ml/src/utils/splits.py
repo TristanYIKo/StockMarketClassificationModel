@@ -111,7 +111,8 @@ def get_feature_columns(df: pd.DataFrame, target_col: str = 'y_class_1d') -> lis
     Returns:
         List of feature column names
     """
-    exclude_cols = ['symbol', 'date', target_col]
+    # Exclude both target columns to prevent leakage
+    exclude_cols = ['symbol', 'date', 'y_class_1d', 'y_class_5d']
     feature_cols = [c for c in df.columns if c not in exclude_cols]
     return feature_cols
 

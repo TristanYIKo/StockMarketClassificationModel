@@ -1,0 +1,26 @@
+horizons:
+  1d:
+    target_col: y_class_1d
+    models:
+      - name: random_forest
+        path: ml/artifacts/models/random_forest/model.pkl
+        preprocessor_path: ml/artifacts/models/random_forest/preprocessor.pkl
+      - name: lightgbm
+        path: ml/artifacts/models/lightgbm/model.pkl
+        preprocessor_path: ml/artifacts/models/lightgbm/preprocessor.pkl
+      - name: xgboost
+        path: ml/artifacts/models/xgboost/model.pkl
+        preprocessor_path: ml/artifacts/models/xgboost/preprocessor.pkl
+  
+  5d:
+    target_col: y_class_5d
+    models:
+      - name: random_forest
+        path: ml/artifacts/models/random_forest/model.pkl
+        preprocessor_path: ml/artifacts/models/random_forest/preprocessor.pkl
+      - name: lightgbm
+        path: ml/artifacts/models/lightgbm/model.pkl
+        preprocessor_path: ml/artifacts/models/lightgbm/preprocessor.pkl
+      - name: xgboost
+        path: ml/artifacts/models/xgboost/model.pkl
+        preprocessor_path: ml/artifacts/models/xgboost/preprocessor.pkl
