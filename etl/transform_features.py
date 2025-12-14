@@ -114,29 +114,39 @@ def price_rsquared(price: pd.Series, window: int = 20) -> pd.Series:
     return price.rolling(window).apply(compute_rsq, raw=False)
 
 
-# PRUNED FEATURE MANIFEST (60 total features)
-# Technical: log_ret_1d, log_ret_5d, log_ret_20d, rsi_14, macd_hist, vol_5, vol_20, vol_60,
-#            atr_14, high_low_pct, close_open_pct, sma_20, sma_50, sma_200, ema_20, ema_50,
-#            sma20_gt_sma50, volume_z, volume_chg_pct, dd_60, dow, days_since_prev (22)
-# Macro: dgs2, dgs10, yield_curve_slope, dgs10_change_1d, dgs10_change_5d, hy_oas_level,
-#        hy_oas_change_1d, hy_oas_change_5d, liquidity_expanding, fed_bs_chg_pct,
-#        rrp_level, rrp_chg_pct_5d (12)
-# VIX: vix_level, vix_change_1d, vix_change_5d, vix_term_structure (4)
-# Cross-asset: dxy_ret_5d, gold_ret_5d, oil_ret_5d, hyg_ret_5d, hyg_vs_spy_5d,
-#              hyg_spy_corr_20d, lqd_ret_5d, tlt_ret_5d (8)
-# Breadth: rsp_spy_ratio, rsp_spy_ratio_z, qqq_spy_ratio_z, iwm_spy_ratio_z (4)
-# Events: is_fomc, is_cpi_release, is_nfp_release (3)
-# OHLCV: open, high, low, close, adj_close, volume (6)
-# Labels: y_1d, y_5d, y_thresh (3)
-
-# DROPPED FEATURES (11):
+# OPTIMIZED FEATURE MANIFEST (v2.0 - Regression Optimized)
+# 
+# TECHNICAL (22): log_ret_1d, log_ret_5d, log_ret_20d, rsi_14, macd_hist, 
+#                 vol_5, vol_20, vol_60, atr_14, high_low_pct, close_open_pct,
+#                 sma_20, sma_50, sma_200, ema_20, ema_50, sma20_gt_sma50,
+#                 volume_z, volume_chg_pct, dd_60, dow, days_since_prev
+#
+# OVERNIGHT/INTRADAY (7): overnight_return, intraday_return, overnight_mean_20,
+#                         overnight_std_20, intraday_mean_20, intraday_std_20,
+#                         overnight_share (FIXED for numerical stability)
+#
+# TREND QUALITY (3): adx_14, return_autocorr_20, price_rsq_20
+#
+# MACRO (11): dgs2, dgs10, yield_curve_slope, dgs10_change_5d (REMOVED: dgs10_change_1d),
+#             hy_oas_level, hy_oas_change_1d, hy_oas_change_5d, liquidity_expanding,
+#             fed_bs_chg_pct, rrp_level, rrp_chg_pct_5d
+#
+# VIX (4): vix_level, vix_change_1d, vix_change_5d, vix_term_structure
+#
+# CROSS-ASSET (8): dxy_ret_5d, gold_ret_5d, oil_ret_5d, hyg_ret_5d, hyg_vs_spy_5d,
+#                  hyg_spy_corr_20d, lqd_ret_5d, tlt_ret_5d
+#
+# BREADTH (4): rsp_spy_ratio, rsp_spy_ratio_z, qqq_spy_ratio_z, iwm_spy_ratio_z
+#
+# EVENTS (3): is_fomc, is_cpi_release, is_nfp_release
+#
+# DROPPED FEATURES (redundancy reduction):
+# - dgs10_change_1d: redundant with dgs10_change_5d
 # - SMA 5/10, EMA 5/10/200: redundant with kept MAs
 # - MACD line/signal: redundant with histogram
 # - log_ret_10d, vol_10d: redundant with 5d/20d
-# - OBV: noisy volume proxy
+# - OBV: noisy volume proxy, redundant with volume_z
 # - dd_20: redundant with dd_60
-# - month: redundant with day_of_week + seasonal effects captured by macro
-# - is_month_end, is_quarter_end: low ROI
 
 KEPT_FEATURES = [
     # Returns / momentum
@@ -238,10 +248,13 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     out["intraday_mean_20"] = out["intraday_return"].rolling(20).mean()
     out["intraday_std_20"] = out["intraday_return"].rolling(20).std()
     
-    # Overnight share: what % of daily return happens overnight
-    total_return = out["log_ret_1d"]
-    out["overnight_share"] = out["overnight_return"] / (total_return.abs() + 1e-9)
-    out["overnight_share"] = out["overnight_share"].clip(-5, 5)  # cap extreme values
+    # Overnight share: ratio of overnight vs total movement (numerically stable)
+    # Formula: overnight / (|overnight| + |intraday| + epsilon)
+    # This prevents division by zero and handles near-zero returns gracefully
+    # Clip to [-1, 1] as overnight cannot exceed total movement
+    total_movement = out["overnight_return"].abs() + out["intraday_return"].abs() + 1e-6
+    out["overnight_share"] = out["overnight_return"] / total_movement
+    out["overnight_share"] = out["overnight_share"].clip(-1, 1)  # bounded ratio
 
     # ========================================
     # TREND QUALITY FEATURES (REGRESSION-FRIENDLY)

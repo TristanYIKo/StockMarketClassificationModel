@@ -125,26 +125,31 @@ class SupabaseDB:
 
     def upsert_labels_daily(self, rows):
         """
-        Upsert labels with regression targets.
+        Upsert labels with regression targets (optimized v2.0).
         
-        Row format: (asset_id, date, y_1d_raw, y_5d_raw, y_1d_vol, y_5d_vol, 
+        Row format: (asset_id, date, primary_target, y_1d_vol_clip, y_5d_vol_clip,
+                     y_1d_raw, y_5d_raw, y_1d_vol, y_5d_vol, 
                      y_1d_clipped, y_5d_clipped, y_1d, y_5d, y_thresh)
         """
         data = [
             {
                 "asset_id": row[0],
                 "date": str(row[1]),
-                # Regression targets
-                "y_1d_raw": row[2],
-                "y_5d_raw": row[3],
-                "y_1d_vol": row[4],
-                "y_5d_vol": row[5],
-                "y_1d_clipped": row[6],
-                "y_5d_clipped": row[7],
+                # PRIMARY regression targets (vol-scaled + clipped)
+                "primary_target": row[2],
+                "y_1d_vol_clip": row[3],
+                "y_5d_vol_clip": row[4],
+                # Diagnostic regression targets
+                "y_1d_raw": row[5],
+                "y_5d_raw": row[6],
+                "y_1d_vol": row[7],
+                "y_5d_vol": row[8],
+                "y_1d_clipped": row[9],
+                "y_5d_clipped": row[10],
                 # Classification targets (legacy)
-                "y_1d": row[8],
-                "y_5d": row[9],
-                "y_thresh": row[10]
+                "y_1d": row[11],
+                "y_5d": row[12],
+                "y_thresh": row[13]
             }
             for row in rows
         ]

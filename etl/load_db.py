@@ -62,8 +62,9 @@ def upsert_labels(db: SupabaseDB, asset_id: str, labels_df: pd.DataFrame):
     """
     Upsert regression and classification labels.
     
-    Expects columns:
-    - Regression: y_1d_raw, y_5d_raw, y_1d_vol, y_5d_vol, y_1d_clipped, y_5d_clipped
+    Expects columns (optimized v2.0):
+    - PRIMARY: primary_target, y_1d_vol_clip, y_5d_vol_clip
+    - Diagnostic: y_1d_raw, y_5d_raw, y_1d_vol, y_5d_vol, y_1d_clipped, y_5d_clipped
     - Classification: y_1d, y_5d, y_thresh
     """
     rows = []
@@ -71,7 +72,11 @@ def upsert_labels(db: SupabaseDB, asset_id: str, labels_df: pd.DataFrame):
         row = (
             asset_id,
             r.Index,  # date
-            # Regression targets
+            # PRIMARY TARGETS (vol-scaled + clipped)
+            float(r.primary_target) if hasattr(r, 'primary_target') and pd.notnull(r.primary_target) else None,
+            float(r.y_1d_vol_clip) if hasattr(r, 'y_1d_vol_clip') and pd.notnull(r.y_1d_vol_clip) else None,
+            float(r.y_5d_vol_clip) if hasattr(r, 'y_5d_vol_clip') and pd.notnull(r.y_5d_vol_clip) else None,
+            # Diagnostic regression targets
             float(r.y_1d_raw) if hasattr(r, 'y_1d_raw') and pd.notnull(r.y_1d_raw) else None,
             float(r.y_5d_raw) if hasattr(r, 'y_5d_raw') and pd.notnull(r.y_5d_raw) else None,
             float(r.y_1d_vol) if hasattr(r, 'y_1d_vol') and pd.notnull(r.y_1d_vol) else None,
