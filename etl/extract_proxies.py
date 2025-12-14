@@ -109,9 +109,9 @@ def compute_proxy_features(proxy_dict: dict, base_symbols: list = ["SPY"]) -> pd
     # VIX features
     if "^VIX_close" in merged.columns:
         merged["vix_level"] = merged["^VIX_close"]
-        merged["vix_change_1d"] = merged["^VIX_close"].diff(1)
-        merged["vix_change_5d"] = merged["^VIX_close"].diff(5)
-        merged["vix_pct_change_1d"] = merged["^VIX_close"].pct_change(1)
+        merged["vix_change_1d"] = merged["^VIX_close"].shift(1).diff(1)
+        merged["vix_change_5d"] = merged["^VIX_close"].shift(1).diff(5)
+        merged["vix_pct_change_1d"] = merged["^VIX_close"].shift(1).pct_change(1)
         
         # VIX term structure proxy
         if "^VIX9D_close" in merged.columns:
@@ -119,27 +119,27 @@ def compute_proxy_features(proxy_dict: dict, base_symbols: list = ["SPY"]) -> pd
     
     # DXY (UUP) features
     if "UUP_close" in merged.columns:
-        merged["dxy_ret_1d"] = merged["UUP_close"].pct_change(1)
-        merged["dxy_ret_5d"] = merged["UUP_close"].pct_change(5)
-        merged["dxy_ret_20d"] = merged["UUP_close"].pct_change(20)
+        merged["dxy_ret_1d"] = merged["UUP_close"].shift(1).pct_change(1)
+        merged["dxy_ret_5d"] = merged["UUP_close"].shift(1).pct_change(5)
+        merged["dxy_ret_20d"] = merged["UUP_close"].shift(1).pct_change(20)
     
     # Gold features
     if "GLD_close" in merged.columns:
-        merged["gold_ret_1d"] = merged["GLD_close"].pct_change(1)
-        merged["gold_ret_5d"] = merged["GLD_close"].pct_change(5)
-        merged["gold_ret_20d"] = merged["GLD_close"].pct_change(20)
+        merged["gold_ret_1d"] = merged["GLD_close"].shift(1).pct_change(1)
+        merged["gold_ret_5d"] = merged["GLD_close"].shift(1).pct_change(5)
+        merged["gold_ret_20d"] = merged["GLD_close"].shift(1).pct_change(20)
     
     # Oil features
     if "USO_close" in merged.columns:
-        merged["oil_ret_1d"] = merged["USO_close"].pct_change(1)
-        merged["oil_ret_5d"] = merged["USO_close"].pct_change(5)
-        merged["oil_ret_20d"] = merged["USO_close"].pct_change(20)
+        merged["oil_ret_1d"] = merged["USO_close"].shift(1).pct_change(1)
+        merged["oil_ret_5d"] = merged["USO_close"].shift(1).pct_change(5)
+        merged["oil_ret_20d"] = merged["USO_close"].shift(1).pct_change(20)
     
     # Credit features
     if "HYG_close" in merged.columns:
-        merged["hyg_ret_1d"] = merged["HYG_close"].pct_change(1)
-        merged["hyg_ret_5d"] = merged["HYG_close"].pct_change(5)
-        merged["hyg_ret_20d"] = merged["HYG_close"].pct_change(20)
+        merged["hyg_ret_1d"] = merged["HYG_close"].shift(1).pct_change(1)
+        merged["hyg_ret_5d"] = merged["HYG_close"].shift(1).pct_change(5)
+        merged["hyg_ret_20d"] = merged["HYG_close"].shift(1).pct_change(20)
         
         # Relative to SPY (if available)
         if "SPY_close" in merged.columns:

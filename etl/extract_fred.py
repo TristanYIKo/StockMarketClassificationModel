@@ -197,25 +197,25 @@ def compute_fred_derived_features(macro_dict: Dict[str, pd.DataFrame]) -> pd.Dat
         merged["yield_curve_slope"] = merged["DGS10"] - merged["DGS2"]
     
     if "DGS10" in merged.columns:
-        merged["dgs10_change_1d"] = merged["DGS10"].diff(1)
-        merged["dgs10_change_5d"] = merged["DGS10"].diff(5)
+        merged["dgs10_change_1d"] = merged["DGS10"].shift(1).diff(1)
+        merged["dgs10_change_5d"] = merged["DGS10"].shift(1).diff(5)
     
     if "DGS2" in merged.columns:
-        merged["dgs2_change_1d"] = merged["DGS2"].diff(1)
-        merged["dgs2_change_5d"] = merged["DGS2"].diff(5)
+        merged["dgs2_change_1d"] = merged["DGS2"].shift(1).diff(1)
+        merged["dgs2_change_5d"] = merged["DGS2"].shift(1).diff(5)
     
     if "BAMLH0A0HYM2" in merged.columns:
         merged["hy_oas_level"] = merged["BAMLH0A0HYM2"]
-        merged["hy_oas_change_1d"] = merged["BAMLH0A0HYM2"].diff(1)
-        merged["hy_oas_change_5d"] = merged["BAMLH0A0HYM2"].diff(5)
+        merged["hy_oas_change_1d"] = merged["BAMLH0A0HYM2"].shift(1).diff(1)
+        merged["hy_oas_change_5d"] = merged["BAMLH0A0HYM2"].shift(1).diff(5)
     
     if "WALCL" in merged.columns:
-        merged["fed_balance_sheet_change_pct"] = merged["WALCL"].pct_change(periods=5)
+        merged["fed_balance_sheet_change_pct"] = merged["WALCL"].shift(1).pct_change(periods=5)
         # Liquidity regime: expanding if 20d change > 0
-        merged["liquidity_expanding"] = (merged["WALCL"].diff(20) > 0).astype(int)
+        merged["liquidity_expanding"] = (merged["WALCL"].shift(1).diff(20) > 0).astype(int)
     
     if "RRPONTSYD" in merged.columns:
         merged["rrp_level"] = merged["RRPONTSYD"]
-        merged["rrp_change_pct_5d"] = merged["RRPONTSYD"].pct_change(periods=5)
+        merged["rrp_change_pct_5d"] = merged["RRPONTSYD"].shift(1).pct_change(periods=5)
     
     return merged

@@ -186,9 +186,10 @@ def compute_features(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     
     # Returns (keep 1d, 5d, 20d; drop 10d)
-    out["log_ret_1d"] = np.log(out["close"]).diff(1)
-    out["log_ret_5d"] = np.log(out["close"]).diff(5)
-    out["log_ret_20d"] = np.log(out["close"]).diff(20)
+    # CRITICAL: Use shift(1) to avoid look-ahead bias - we don't know today's close when predicting tomorrow
+    out["log_ret_1d"] = np.log(out["close"]).shift(1).diff(1)
+    out["log_ret_5d"] = np.log(out["close"]).shift(1).diff(5)
+    out["log_ret_20d"] = np.log(out["close"]).shift(1).diff(20)
 
     # Volatility (keep 5, 20, 60; drop 10)
     for w in [5, 20, 60]:
