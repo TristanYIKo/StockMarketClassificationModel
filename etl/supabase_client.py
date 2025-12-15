@@ -160,3 +160,48 @@ class SupabaseDB:
         for i in range(0, len(data), 1000):
             chunk = data[i:i+1000]
             self.client.table("labels_daily").upsert(chunk, on_conflict="asset_id,date").execute()
+
+    def get_latest_date(self) -> str:
+        """Get the latest date present in the daily_bars table."""
+        try:
+            # Order by date desc, limit 1
+            response = self.client.table("daily_bars") \
+                .select("date") \
+                .order("date", desc=True) \
+                .limit(1) \
+                .execute()
+            
+            if response.data and len(response.data) > 0:
+                return response.data[0]["date"]
+            return None
+        except Exception as e:
+            print(f"Error fetching latest date: {e}")
+            return None
+
+    def fetch_daily_bars(self, asset_id: str, start_date: str) -> List[Dict]:
+        """Fetch daily bars for an asset from a specific start date."""
+        try:
+            response = self.client.table("daily_bars") \
+                .select("*") \
+                .eq("asset_id", asset_id) \
+                .gte("date", start_date) \
+                .order("date", desc=False) \
+                .execute()
+            return response.data
+        except Exception as e:
+            print(f"Error fetching bars for {asset_id}: {e}")
+            return []
+
+    def fetch_macro_daily(self, series_id: str, start_date: str) -> List[Dict]:
+        """Fetch macro data for a series from a specific start date."""
+        try:
+            response = self.client.table("macro_daily") \
+                .select("*") \
+                .eq("series_id", series_id) \
+                .gte("date", start_date) \
+                .order("date", desc=False) \
+                .execute()
+            return response.data
+        except Exception as e:
+            print(f"Error fetching macro for {series_id}: {e}")
+            return []

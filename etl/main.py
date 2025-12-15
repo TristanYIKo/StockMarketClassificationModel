@@ -1,5 +1,5 @@
 import argparse
-from datetime import date
+from datetime import date, timedelta
 import os
 import pandas as pd
 import pandas_market_calendars as mcal
@@ -47,8 +47,33 @@ def upsert_events(db: SupabaseDB, events_df: pd.DataFrame):
 
 
 def run_etl(start: str, end: str, mode: str):
-    cfg = ETLConfig(start=date.fromisoformat(start), end=date.fromisoformat(end), mode=mode)
     db = SupabaseDB()
+    
+    # 0. Auto-detect start date if not provided
+    if start is None:
+        latest = db.get_latest_date()
+        if latest:
+            start_date = date.fromisoformat(latest) + timedelta(days=1)
+            start = start_date.isoformat()
+            print(f"✅ Auto-detected update start date: {start} (Daily Mode)")
+            mode = "incremental"
+        else:
+            start = "2015-01-01"
+            print(f"⚠️ No data in DB. Defaulting to backfill from {start}")
+            mode = "backfill"
+
+    start_date = date.fromisoformat(start)
+    end_date = date.fromisoformat(end)
+    
+    # Lookback window for rolling features (ensures 200-day MA is correct)
+    LOOKBACK_DAYS = 365
+    context_start_date = start_date - timedelta(days=LOOKBACK_DAYS)
+    context_start_str = context_start_date.isoformat()
+    
+    print(f"Configuration: Range {start} to {end} | Mode: {mode}")
+    print(f"Context Lookback: {context_start_str} (to ensure feature correctness)")
+
+    cfg = ETLConfig(start=start_date, end=end_date, mode=mode)
     
     # Initialize NYSE calendar for ET alignment
     nyse = mcal.get_calendar("NYSE")
@@ -64,46 +89,97 @@ def run_etl(start: str, end: str, mode: str):
     upsert_asset_metadata(db, asset_rows)
     asset_id_map = db.get_asset_id_map()
 
-    # 2. Extract ETF bars and actions
+    # 2. Extract ETF bars and actions (WITH LOOKBACK)
     etf_bars_dict = {}
     for sym in cfg.symbols:
         print(f"Processing ETF {sym} ...")
-        bars = download_ohlcv(sym, start, end)
+        
+        # A. Fetch History (Context)
+        hist_data = []
+        if mode == "incremental":
+            hist_data = db.fetch_daily_bars(asset_id_map[sym], context_start_str)
+            # Filter strictly before start_date to avoid dups
+            hist_data = [d for d in hist_data if d['date'] < start]
+        
+        hist_df = pd.DataFrame(hist_data)
+        if not hist_df.empty:
+            # Convert date to datetime for consistency with downloaded data
+            hist_df['date'] = pd.to_datetime(hist_df['date'])
+            # Ensure numeric columns
+            for col in ['open', 'high', 'low', 'close', 'adj_close', 'volume']:
+                 hist_df[col] = pd.to_numeric(hist_df[col])
+        
+        # B. Download New Data
+        new_bars = download_ohlcv(sym, start, end)
         actions = download_actions(sym, start, end)
-        if bars.empty:
-            print(f"No bars for {sym}")
-            continue
-        etf_bars_dict[sym] = bars
-        upsert_daily(db, asset_id_map[sym], bars)
+        
+        # Upsert NEW data immediately (raw data is safe to upsert)
+        if not new_bars.empty:
+            upsert_daily(db, asset_id_map[sym], new_bars)
         if not actions.empty:
             upsert_actions(db, asset_id_map[sym], actions)
-        print(f"Done {sym}: bars={len(bars)}")
+            
+        # C. Merge for Feature Computation
+        if not new_bars.empty:
+            # Normalize dates
+            new_bars['date'] = pd.to_datetime(new_bars['date'])
+            if not hist_df.empty:
+                full_bars = pd.concat([hist_df, new_bars]).drop_duplicates(subset='date').sort_values('date').reset_index(drop=True)
+            else:
+                full_bars = new_bars
+        else:
+            full_bars = hist_df
+            
+        if full_bars.empty:
+            print(f"  No data for {sym} (History: {len(hist_df)}, New: {len(new_bars)})")
+            continue
+            
+        etf_bars_dict[sym] = full_bars
+        print(f"  Merged {sym}: {len(full_bars)} rows (History: {len(hist_df)}, New: {len(new_bars)})")
 
-    # 3. Extract proxy OHLCV
+    # 3. Extract proxy OHLCV (WITH LOOKBACK)
     proxy_bars_dict = {}
     for sym in PROXY_TICKERS.keys():
         print(f"Processing proxy {sym} ...")
-        bars = download_proxy_ohlcv(sym, start, end)
-        if bars.empty:
-            print(f"No bars for proxy {sym}")
-            continue
-        proxy_bars_dict[sym] = bars
-        upsert_daily(db, asset_id_map[sym], bars)
-        print(f"Done proxy {sym}: bars={len(bars)}")
+        
+        # A. Fetch History
+        hist_data = []
+        if mode == "incremental":
+            # Proxies are stored in daily_bars too? Yes, asset_id_map includes them.
+            hist_data = db.fetch_daily_bars(asset_id_map[sym], context_start_str)
+            hist_data = [d for d in hist_data if d['date'] < start]
+            
+        hist_df = pd.DataFrame(hist_data)
+        if not hist_df.empty:
+            hist_df['date'] = pd.to_datetime(hist_df['date'])
+            for col in ['open', 'high', 'low', 'close', 'adj_close', 'volume']:
+                 hist_df[col] = pd.to_numeric(hist_df[col])
 
-    # 4. Extract FRED macro series with ET alignment
-    print("Processing FRED macro series ...")
-    macro_dict = {}
-    for series_id in cfg.fred_series:
-        print(f"  Fetching {series_id} ...")
-        df = download_fred_series(series_id, start, end, nyse, max_gap_days=7)
-        if df.empty:
-            print(f"  No data for {series_id}")
+        # B. Download New
+        new_bars = download_proxy_ohlcv(sym, start, end)
+        
+        if not new_bars.empty:
+            upsert_daily(db, asset_id_map[sym], new_bars)
+            new_bars['date'] = pd.to_datetime(new_bars['date'])
+        
+        # C. Merge
+        if not new_bars.empty:
+             if not hist_df.empty:
+                full_bars = pd.concat([hist_df, new_bars]).drop_duplicates(subset='date').sort_values('date').reset_index(drop=True)
+             else:
+                full_bars = new_bars
+        else:
+            full_bars = hist_df
+        
+        if full_bars.empty:
             continue
-        macro_dict[series_id] = df
-        print(f"  Done {series_id}: rows={len(df)}")
+            
+        proxy_bars_dict[sym] = full_bars
+
+    # 4. Extract FRED macro series (WITH LOOKBACK)
+    print("Processing FRED macro series ...")
     
-    # Upsert macro catalog
+    # Upsert macro catalog first
     macro_catalog_rows = [
         (series_id, FRED_SERIES_CONFIG.get(series_id, {}).get("name", series_id), 
          FRED_SERIES_CONFIG.get(series_id, {}).get("frequency", "daily"), "FRED")
@@ -112,50 +188,76 @@ def run_etl(start: str, end: str, mode: str):
     db.upsert_macro_series(macro_catalog_rows)
     macro_id_map = db.get_macro_series_id_map()
     
-    for series_id, df in macro_dict.items():
-        if series_id in macro_id_map:
-            upsert_macro_daily(db, macro_id_map[series_id], df)
+    macro_dict = {}
+    for series_id in cfg.fred_series:
+        print(f"  Fetching {series_id} ...")
+        
+        # A. Fetch History
+        hist_data = []
+        if mode == "incremental" and series_id in macro_id_map:
+            hist_data = db.fetch_macro_daily(macro_id_map[series_id], context_start_str)
+            hist_data = [d for d in hist_data if d['date'] < start]
+            
+        hist_df = pd.DataFrame(hist_data)
+        if not hist_df.empty:
+            hist_df['date'] = pd.to_datetime(hist_df['date'])
+            hist_df['value'] = pd.to_numeric(hist_df['value'])
+        
+        # B. Download New
+        # Note: download_fred_series handles caching/rate limits? 
+        # We pass full range because FRED often updates history. 
+        # But for strictly incremental, maybe start is enough. 
+        # Use context_start for safety with FRED lags? No, download new only.
+        new_df = download_fred_series(series_id, start, end, nyse, max_gap_days=7)
+        
+        if not new_df.empty:
+            if series_id in macro_id_map:
+                upsert_macro_daily(db, macro_id_map[series_id], new_df)
+            new_df['date'] = pd.to_datetime(new_df['date'])
+            
+        # C. Merge
+        if not new_df.empty:
+            if not hist_df.empty:
+                # FRED might overlap, prioritise new
+                full_df = pd.concat([hist_df, new_df]).drop_duplicates(subset='date', keep='last').sort_values('date').reset_index(drop=True)
+            else:
+                full_df = new_df
+        else:
+            full_df = hist_df
+            
+        if not full_df.empty:
+            macro_dict[series_id] = full_df
 
-    # 5. Build events calendar
+    # 5. Build events calendar (Full Range for context? Events usually future/past known)
+    # Just build for new range is fine, or context. Let's do context for safety.
     print("Building events calendar ...")
-    events_df = build_events_calendar(nyse, start, end)
+    events_df = build_events_calendar(nyse, context_start_str, end)
     if not events_df.empty:
+        # Upsert only new ones? The upsert logic handles conflicts.
         upsert_events(db, events_df)
-        print(f"Done events: rows={len(events_df)}")
 
-    # 6. Compute derived features from FRED and proxies
+    # 6. Compute derived features (On Full Concatenated Data)
     print("Computing context features ...")
     macro_features_df = compute_fred_derived_features(macro_dict)
     
-    # Add SPY to proxy dict for relative strength calculations
     proxy_with_spy = {**proxy_bars_dict, "SPY": etf_bars_dict.get("SPY", pd.DataFrame())}
     proxy_features_df = compute_proxy_features(proxy_with_spy)
     relative_strength_df = compute_relative_strength_features(etf_bars_dict)
 
-    # 7. For each ETF: REGRESSION FEATURE PIPELINE
-    # Execution order (CRITICAL for no leakage):
-    #   1) Load raw data
-    #   2) Compute base technical features
-    #   3) Merge context features (macro, proxies, events)
-    #   4) Compute rolling stats (overnight/intraday, ADX, etc)
-    #   5) Compute regime flags
-    #   6) Apply lags (LAST, provides memory)
-    #   7) Compute labels (forward-shifted)
-    
+    # 7. For each ETF: FEATURE PIPELINE
     for sym in cfg.symbols:
         if sym not in etf_bars_dict:
             continue
         
-        print(f"Building regression features for {sym} ...")
         bars = etf_bars_dict[sym]
+        if bars.empty:
+            continue
+            
+        print(f"Building regression features for {sym} (Total rows: {len(bars)})...")
         
-        # STEP 1: Base technical features from OHLCV
-        # Includes: returns, RSI, MACD, SMA/EMA, ATR, volume, drawdown, calendar
-        # NEW: overnight/intraday returns, ADX, autocorr, R²
+        # Computation runs on FULL history + new data
         tech_features = compute_features(bars)
         
-        # STEP 2: Merge context features (macro, proxies, breadth, events)
-        # Adds: FRED macro, VIX, cross-asset, relative strength, event flags
         full_features = merge_context_features(
             tech_features,
             macro_features_df,
@@ -164,30 +266,49 @@ def run_etl(start: str, end: str, mode: str):
             events_df
         )
         
-        # STEP 3: Conservative forward-fill for macro (max 5-day gaps)
         full_features = forward_fill_macro_conservative(full_features, max_gap_days=5)
-        
-        # STEP 4: Compute regime flags
-        # Adds: high_vol_regime, curve_inverted, credit_stress, liquidity_expanding_regime
         full_features = compute_all_regimes(full_features)
-        
-        # STEP 5: Apply temporal lags (memory for regression)
-        # Adds: log_ret_1d_lag1/2/3/5, vix_change_lag1/3, hy_oas_change_lag1, yield_curve_slope_lag1
         full_features = apply_lags(full_features)
         
-        # STEP 6: Convert to feature_json format for storage
-        features_json_df = create_modeling_features_json(full_features)
+        # --- SLICE NEW DATA FOR UPSERT ---
+        # Only upsert rows >= start_date
+        # Convert index/date to compare
+        full_features['date_temp'] = pd.to_datetime(full_features['date'])
+        new_features = full_features[full_features['date_temp'] >= pd.to_datetime(start_date)].copy()
+        
+        if new_features.empty:
+            print(f"  No new features to upsert for {sym}")
+            continue
+            
+        features_json_df = create_modeling_features_json(new_features)
         upsert_features_json(db, asset_id_map[sym], features_json_df)
         
-        # STEP 7: Compute regression labels (volatility-scaled, forward-shifted)
-        # Needs vol_20 from features for scaling
+        # Compute Labels
+        # Labels need FUTURE data. 
+        # If we are at 'today', future labels will be NaN/Wait.
+        # But compute_labels handles this.
         vol_20 = full_features["vol_20"]
+        
+        # Pass FULL bars to compute labels (needs shift)
         labels = compute_labels(bars["close"], vol_20, y_thresh=cfg.y_thresh)
         labels.index = pd.to_datetime(bars["date"])[: len(labels)].dt.date
-        labels.index.name = "date"
-        upsert_labels(db, asset_id_map[sym], labels)
         
-        print(f"Done {sym}: features={len(features_json_df)}, labels={len(labels)}")
+        # Filter labels for update range
+        # Note: We might want to re-update slightly past labels if 5d target changes?
+        # But kept simple: update labels for start_date onwards.
+        # Labels for T-5 might become valid at T. 
+        # If backfilling, we have future. If today, valid labels are null.
+        # Ideally we process labels for all rows where we have data?
+        # To be safe, we upsert labels for the new window.
+        
+        # Convert index to datetime for filtering
+        labels_idx_dt = pd.to_datetime(labels.index)
+        labels_to_upsert = labels[labels_idx_dt >= pd.to_datetime(start_date)]
+        
+        labels_to_upsert.index.name = "date"
+        upsert_labels(db, asset_id_map[sym], labels_to_upsert)
+        
+        print(f"  ✅ Upserted {sym}: {len(features_json_df)} features, {len(labels_to_upsert)} labels")
 
     db.close()
     print("ETL complete!")
@@ -195,9 +316,14 @@ def run_etl(start: str, end: str, mode: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--start", type=str, required=True)
-    parser.add_argument("--end", type=str, required=True)
-    parser.add_argument("--mode", type=str, choices=["backfill", "incremental"], default="backfill")
+    parser.add_argument("--start", type=str, required=False, help="Start date (YYYY-MM-DD). If omitted, defaults to latest DB date + 1 day.")
+    parser.add_argument("--end", type=str, required=False, help="End date (YYYY-MM-DD). If omitted, defaults to today.")
+    parser.add_argument("--mode", type=str, choices=["backfill", "incremental"], default="incremental")
     args = parser.parse_args()
 
+    # Default end to today if not provided
+    if not args.end:
+        args.end = date.today().isoformat()
+    
+    # Logic for start date handled inside run_etl if None
     run_etl(args.start, args.end, args.mode)

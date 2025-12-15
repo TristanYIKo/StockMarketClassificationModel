@@ -227,16 +227,19 @@ def main():
                         help='Data source: csv or supabase')
     parser.add_argument('--csv_path', type=str, default='classification_dataset.csv',
                         help='Path to CSV file (if data_source=csv)')
+    parser.add_argument('--suffix', type=str, default='',
+                        help='Suffix to append to model names (e.g. _5d)')
     args = parser.parse_args()
     
     # Setup logging
     logger = setup_logging()
     logger.info("=" * 70)
-    logger.info("STOCK MARKET CLASSIFICATION MODEL - TRAINING PIPELINE")
+    logger.info(f"STOCK MARKET CLASSIFICATION MODEL - TRAINING PIPELINE {args.suffix}")
     logger.info("=" * 70)
     logger.info(f"Data source: {args.data_source}")
     logger.info(f"Config: {args.config}")
     
+    # ... (loading config and data) ...
     # Load config
     config = load_config(args.config)
     
@@ -266,6 +269,7 @@ def main():
     X_val, y_val = prepare_X_y(splits['val'])
     X_test, y_test = prepare_X_y(splits['test'])
     
+    # ... (preprocessing) ...
     # Fit preprocessor on TRAINING data only
     logger.info("\n" + "=" * 70)
     logger.info("PREPROCESSING")
@@ -299,7 +303,7 @@ def main():
     
     # Logistic Regression
     if 'logistic_regression' in config['models']:
-        model_name = 'logistic_regression'
+        model_name = 'logistic_regression' + args.suffix
         model = train_logistic_regression(X_train_processed, y_train, class_weights, config)
         models[model_name] = model
         
@@ -334,7 +338,7 @@ def main():
     
     # Random Forest
     if 'random_forest' in config['models']:
-        model_name = 'random_forest'
+        model_name = 'random_forest' + args.suffix
         model = train_random_forest(X_train_processed, y_train, class_weights, config)
         models[model_name] = model
         
@@ -367,7 +371,7 @@ def main():
     
     # LightGBM
     if 'lightgbm' in config['models']:
-        model_name = 'lightgbm'
+        model_name = 'lightgbm' + args.suffix
         model = train_lightgbm(X_train_processed, y_train, class_weights, config)
         models[model_name] = model
         
@@ -400,7 +404,7 @@ def main():
     
     # XGBoost
     if 'xgboost' in config['models']:
-        model_name = 'xgboost'
+        model_name = 'xgboost' + args.suffix
         model = train_xgboost(X_train_processed, y_train, class_weights, config)
         models[model_name] = model
         

@@ -1,6 +1,6 @@
 {
   "model_name": "lightgbm",
-  "timestamp": "2025-12-14T17:59:09.039903",
+  "timestamp": "2025-12-14T19:10:22.380555",
   "config": {
     "splits": {
       "train_start": "2000-02-01",

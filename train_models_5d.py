@@ -29,4 +29,10 @@ splits.create_time_splits = create_time_splits_5d
 
 # Run training
 if __name__ == '__main__':
+    # Inject arguments for 5d training
+    if '--suffix' not in sys.argv:
+        sys.argv.extend(['--suffix', '_5d'])
+    if '--csv_path' not in sys.argv:
+        sys.argv.extend(['--csv_path', 'classification_dataset_5d.csv'])
+        
     train_models.main()

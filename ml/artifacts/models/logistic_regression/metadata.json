@@ -1,6 +1,6 @@
 {
   "model_name": "logistic_regression",
-  "timestamp": "2025-12-14T17:58:58.848528",
+  "timestamp": "2025-12-14T19:10:12.992353",
   "config": {
     "splits": {
       "train_start": "2000-02-01",
