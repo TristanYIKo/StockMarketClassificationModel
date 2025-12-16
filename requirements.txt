@@ -1,6 +1,7 @@
 pandas>=2.2.0
 numpy>=1.26.0
 yfinance>=0.2.40
+websockets>=13.0
 supabase>=2.3.0
 fredapi>=0.5.1
 pandas-market-calendars>=4.3.3
