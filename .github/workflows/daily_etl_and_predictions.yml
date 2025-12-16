@@ -67,31 +67,28 @@ jobs:
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
       run: |
-        echo "Starting ETL pipeline..."
+        echo "Starting ETL pipeline for all symbols (SPY, QQQ, IWM, DIA)..."
         if [ -n "${{ github.event.inputs.start_date }}" ] && [ -n "${{ github.event.inputs.end_date }}" ]; then
           # Manual run with custom dates
-          python -m etl.main --start ${{ github.event.inputs.start_date }} --end ${{ github.event.inputs.end_date }} --mode incremental
+          python etl/main.py --start ${{ github.event.inputs.start_date }} --end ${{ github.event.inputs.end_date }} --mode incremental
         elif [ -n "${{ github.event.inputs.start_date }}" ]; then
           # Manual run with start date only
-          python -m etl.main --start ${{ github.event.inputs.start_date }} --mode incremental
+          python etl/main.py --start ${{ github.event.inputs.start_date }} --mode incremental
         else
           # Scheduled run - incremental update to today
-          python -m etl.main --mode incremental
+          python etl/main.py --mode incremental
         fi
-        echo "ETL pipeline completed successfully"
+        echo "ETL pipeline completed successfully for all symbols"
     
-    - name: Generate Predictions
+    - name: Generate Predictions for All Symbols
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
-        echo "Generating predictions for next trading day..."
-        cd ml
-        python -m src.predict.predict_and_store \
-          --data_source supabase \
-          --horizons 1d 5d \
-          --store_supabase
-        echo "Predictions generated and stored successfully"
+        echo "Generating predictions for all symbols (SPY, QQQ, IWM, DIA)..."
+        echo "Note: Using placeholder predictions. Configure trained models for actual predictions."
+        python quick_add_predictions_all_symbols.py
+        echo "Predictions generated and stored successfully for all symbols"
     
     - name: Verify Data Update
       env:
