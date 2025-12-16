@@ -54,7 +54,11 @@ def download_proxy_ohlcv(symbol: str, start: str, end: str) -> pd.DataFrame:
     Returns DataFrame with columns: date, open, high, low, close, adj_close, volume
     All dates are NYSE trading days.
     """
-    df = yf.download(symbol, start=start, end=end, interval="1d", auto_adjust=False, progress=False)
+    # yfinance end date is exclusive, so add 1 day to include the end date
+    from datetime import datetime, timedelta
+    end_date = datetime.fromisoformat(end) + timedelta(days=1)
+    end_inclusive = end_date.strftime("%Y-%m-%d")
+    df = yf.download(symbol, start=start, end=end_inclusive, interval="1d", auto_adjust=False, progress=False)
     
     if df.empty:
         return pd.DataFrame({"date": [], "open": [], "high": [], "low": [], "close": [], "adj_close": [], "volume": []})

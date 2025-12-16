@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Tuple, Dict
 import pandas as pd
 import yfinance as yf
@@ -7,7 +7,10 @@ US_TZ = "UTC"  # store in UTC, yfinance returns naive dates for daily
 
 
 def download_ohlcv(symbol: str, start: str, end: str) -> pd.DataFrame:
-    df = yf.download(symbol, start=start, end=end, interval="1d", auto_adjust=False, progress=False)
+    # yfinance end date is exclusive, so add 1 day to include the end date
+    end_date = datetime.fromisoformat(end) + timedelta(days=1)
+    end_inclusive = end_date.strftime("%Y-%m-%d")
+    df = yf.download(symbol, start=start, end=end_inclusive, interval="1d", auto_adjust=False, progress=False)
     if df.empty:
         return df
     
