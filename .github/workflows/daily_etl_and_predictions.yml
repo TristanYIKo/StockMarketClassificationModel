@@ -68,27 +68,29 @@ jobs:
         FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
       run: |
         echo "Starting ETL pipeline for all symbols (SPY, QQQ, IWM, DIA)..."
+        echo "This will update OHLCV data to the most recent completed trading day"
         if [ -n "${{ github.event.inputs.start_date }}" ] && [ -n "${{ github.event.inputs.end_date }}" ]; then
           # Manual run with custom dates
-          python etl/main.py --start ${{ github.event.inputs.start_date }} --end ${{ github.event.inputs.end_date }} --mode incremental
+          python run_etl.py --start ${{ github.event.inputs.start_date }} --end ${{ github.event.inputs.end_date }} --mode incremental
         elif [ -n "${{ github.event.inputs.start_date }}" ]; then
           # Manual run with start date only
-          python etl/main.py --start ${{ github.event.inputs.start_date }} --mode incremental
+          python run_etl.py --start ${{ github.event.inputs.start_date }} --mode incremental
         else
-          # Scheduled run - incremental update to today
-          python etl/main.py --mode incremental
+          # Scheduled run - incremental update to today (auto-detects last date in DB)
+          python run_etl.py --mode incremental
         fi
-        echo "ETL pipeline completed successfully for all symbols"
+        echo "✅ ETL pipeline completed - all symbols updated to latest trading day"
     
     - name: Generate Predictions for All Symbols
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
-        echo "Generating predictions for all symbols (SPY, QQQ, IWM, DIA)..."
-        echo "Note: Using placeholder predictions. Configure trained models for actual predictions."
+        echo "Generating predictions for next available trading day..."
+        echo "Processing all symbols: SPY, QQQ, IWM, DIA (1d and 5d horizons)"
+        echo "Note: Using placeholder predictions (55% UP). For actual model predictions, train and commit models."
         python quick_add_predictions_all_symbols.py
-        echo "Predictions generated and stored successfully for all symbols"
+        echo "✅ Predictions generated for next trading day - all symbols updated"
     
     - name: Verify Data Update
       env:
