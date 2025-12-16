@@ -30,8 +30,8 @@ export function PastPredictionsTable({ data }: PastPredictionsTableProps) {
 
     const getBadgeColor = (dir: string) => {
         switch (dir) {
-            case 'BUY': return "bg-emerald-900/30 text-emerald-400 border-emerald-800/50";
-            case 'SELL': return "bg-rose-900/30 text-rose-400 border-rose-800/50";
+            case 'UP': return "bg-emerald-900/30 text-emerald-400 border-emerald-800/50";
+            case 'DOWN': return "bg-rose-900/30 text-rose-400 border-rose-800/50";
             default: return "bg-slate-800 text-slate-300 border-slate-700";
         }
     };
@@ -88,8 +88,8 @@ export function PastPredictionsTable({ data }: PastPredictionsTableProps) {
                                             {row.actual_return !== undefined ? (
                                                 <div className={`flex items-center gap-1.5 ${row.actual_return > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                                                     <span className="font-mono">{(row.actual_return * 100).toFixed(2)}%</span>
-                                                    {row.direction === 'BUY' && row.actual_return > 0 ? <CheckCircle2 className="w-4 h-4" /> :
-                                                        row.direction === 'SELL' && row.actual_return < 0 ? <CheckCircle2 className="w-4 h-4" /> :
+                                                    {row.direction === 'UP' && row.actual_return > 0 ? <CheckCircle2 className="w-4 h-4" /> :
+                                                        row.direction === 'DOWN' && row.actual_return < 0 ? <CheckCircle2 className="w-4 h-4" /> :
                                                             <XCircle className="w-4 h-4 text-slate-500" />}
                                                 </div>
                                             ) : (

@@ -3,10 +3,9 @@ export type PredictionRow = {
     date: string;              // 'YYYY-MM-DD'
     symbol: 'SPY' | 'QQQ' | 'DIA' | 'IWM';
     horizon: '1d' | '5d';
-    direction: 'BUY' | 'HOLD' | 'SELL';
-    p_buy: number;             // 0..1
-    p_hold: number;            // 0..1
-    p_sell: number;            // 0..1
+    direction: 'UP' | 'DOWN';
+    p_up: number;              // 0..1
+    p_down: number;            // 0..1
     confidence: number;        // max prob
     close?: number;            // for chart
     actual_return?: number;    // optional for past days

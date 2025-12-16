@@ -19,23 +19,25 @@ logger = logging.getLogger(__name__)
 
 class MulticlassCalibrator:
     """
-    One-vs-Rest calibration for 3-class classification.
+    One-vs-Rest calibration for classification.
     Fits separate calibrators for each class.
     """
     
     def __init__(self):
         self.calibrators = {}  # {class: IsotonicRegression}
-        self.classes = [-1, 0, 1]
+        self.classes = None  # Will be set during fit
         
     def fit(self, probs: np.ndarray, y_true: np.ndarray):
         """
         Fit calibrators on validation data.
         
         Args:
-            probs: (N, 3) array of [p_sell, p_hold, p_buy]
-            y_true: (N,) array of true labels in {-1, 0, 1}
+            probs: (N, K) array of class probabilities
+            y_true: (N,) array of true labels
         """
-        logger.info("Fitting OvR calibrators...")
+        # Auto-detect classes from data
+        self.classes = sorted(np.unique(y_true))
+        logger.info(f"Fitting OvR calibrators for classes {self.classes}...")
         
         for i, cls in enumerate(self.classes):
             # Binary target: 1 if y==cls, else 0
@@ -56,13 +58,14 @@ class MulticlassCalibrator:
         Apply calibration and renormalize.
         
         Args:
-            probs: (N, 3) array of [p_sell, p_hold, p_buy]
+            probs: (N, K) array where K is number of classes
             
         Returns:
-            calibrated_probs: (N, 3) array, renormalized to sum to 1
+            calibrated_probs: (N, K) array, renormalized to sum to 1
         """
         N = probs.shape[0]
-        calibrated = np.zeros((N, 3))
+        K = len(self.classes)
+        calibrated = np.zeros((N, K))
         
         for i, cls in enumerate(self.classes):
             p_class = probs[:, i]
@@ -115,9 +118,10 @@ def calibrate_probabilities(
     
     # Compute Brier scores (before and after)
     metrics = {}
-    class_names = ['sell', 'hold', 'buy']
+    class_names = {-1: 'down', 1: 'up', 0: 'hold'}  # Support both binary and 3-class
     
-    for i, (cls, name) in enumerate(zip([-1, 0, 1], class_names)):
+    for i, cls in enumerate(calibrator.classes):
+        name = class_names.get(cls, f'class_{cls}')
         y_val_binary = (y_val == cls).astype(int)
         y_test_binary = (y_test == cls).astype(int)
         

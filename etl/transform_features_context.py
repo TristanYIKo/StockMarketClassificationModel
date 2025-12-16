@@ -100,10 +100,17 @@ def create_modeling_features_json(features_df: pd.DataFrame) -> pd.DataFrame:
         for col in feature_cols:
             val = row[col]
             # Handle NaN, inf, -inf (not JSON compliant)
-            if pd.isna(val) or np.isinf(val):
+            if pd.isna(val):
                 feature_dict[col] = None
+            elif isinstance(val, (int, float, np.number)):
+                # Only check isinf for numeric types
+                if np.isinf(val):
+                    feature_dict[col] = None
+                else:
+                    feature_dict[col] = float(val)
             else:
-                feature_dict[col] = float(val)
+                # Non-numeric value (shouldn't happen, but handle it)
+                feature_dict[col] = None
         
         feature_records.append({
             "date": row["date"],

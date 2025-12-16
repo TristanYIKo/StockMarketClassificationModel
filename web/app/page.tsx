@@ -92,9 +92,8 @@ export default function PredictionsPage() {
             symbol: p.symbol,
             horizon: p.horizon,
             direction: getDirection(p.pred_class_final),
-            p_buy: p.p_buy,
-            p_hold: p.p_hold,
-            p_sell: p.p_sell,
+            p_up: p.p_up,
+            p_down: p.p_down,
             confidence: p.confidence,
             close: bar?.c, // Close price
             actual_return: actualRet,
@@ -120,10 +119,9 @@ export default function PredictionsPage() {
     fetchData();
   }, [selectedSymbol]);
 
-  function getDirection(val: number): 'BUY' | 'HOLD' | 'SELL' {
-    if (val === 1) return 'BUY';
-    if (val === -1) return 'SELL';
-    return 'HOLD';
+  function getDirection(val: number): 'UP' | 'DOWN' {
+    if (val === 1) return 'UP';
+    return 'DOWN';
   }
 
   return (

@@ -40,9 +40,9 @@ export function PredictionCard({ title, prediction, isLoading }: PredictionCardP
     // Determine Badge Color
     const getBadgeColor = (dir: string) => {
         switch (dir) {
-            case 'BUY': return "bg-emerald-900/30 text-emerald-400 hover:bg-emerald-900/50 border-emerald-800/50";
-            case 'SELL': return "bg-rose-900/30 text-rose-400 hover:bg-rose-900/50 border-rose-800/50";
-            default: return "bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700"; // HOLD
+            case 'UP': return "bg-emerald-900/30 text-emerald-400 hover:bg-emerald-900/50 border-emerald-800/50";
+            case 'DOWN': return "bg-rose-900/30 text-rose-400 hover:bg-rose-900/50 border-rose-800/50";
+            default: return "bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700";
         }
     };
 
@@ -50,8 +50,7 @@ export function PredictionCard({ title, prediction, isLoading }: PredictionCardP
         <Card className="bg-slate-900 border-slate-800 shadow-md overflow-hidden relative group">
             {/* Top accent line */}
             <div className={`absolute top-0 left-0 right-0 h-1 
-        ${prediction.direction === 'BUY' ? 'bg-emerald-500/50' :
-                    prediction.direction === 'SELL' ? 'bg-rose-500/50' : 'bg-slate-500/50'}`}
+        ${prediction.direction === 'UP' ? 'bg-emerald-500/50' : 'bg-rose-500/50'}`}
             />
 
             <CardHeader className="pb-2 pt-6">
@@ -80,9 +79,8 @@ export function PredictionCard({ title, prediction, isLoading }: PredictionCardP
                 <div className="space-y-1">
                     <p className="text-xs text-slate-400 font-medium mb-2">Probability Distribution</p>
                     <ProbabilityBars
-                        p_buy={prediction.p_buy}
-                        p_hold={prediction.p_hold}
-                        p_sell={prediction.p_sell}
+                        p_up={prediction.p_up}
+                        p_down={prediction.p_down}
                     />
                 </div>
 

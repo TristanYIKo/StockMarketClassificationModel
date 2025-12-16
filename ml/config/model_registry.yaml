@@ -3,24 +3,24 @@ horizons:
     target_col: y_class_1d
     models:
       - name: random_forest
-        path: ml/artifacts/models/random_forest/model.pkl
-        preprocessor_path: ml/artifacts/models/random_forest/preprocessor.pkl
+        path: ml/artifacts/models/random_forest_1d/model.pkl
+        preprocessor_path: ml/artifacts/models/random_forest_1d/preprocessor.pkl
       - name: lightgbm
-        path: ml/artifacts/models/lightgbm/model.pkl
-        preprocessor_path: ml/artifacts/models/lightgbm/preprocessor.pkl
+        path: ml/artifacts/models/lightgbm_1d/model.pkl
+        preprocessor_path: ml/artifacts/models/lightgbm_1d/preprocessor.pkl
       - name: xgboost
-        path: ml/artifacts/models/xgboost/model.pkl
-        preprocessor_path: ml/artifacts/models/xgboost/preprocessor.pkl
+        path: ml/artifacts/models/xgboost_1d/model.pkl
+        preprocessor_path: ml/artifacts/models/xgboost_1d/preprocessor.pkl
   
   5d:
     target_col: y_class_5d
     models:
       - name: random_forest
-        path: ml/artifacts/models/random_forest/model.pkl
-        preprocessor_path: ml/artifacts/models/random_forest/preprocessor.pkl
+        path: ml/artifacts/models/random_forest_5d/model.pkl
+        preprocessor_path: ml/artifacts/models/random_forest_5d/preprocessor.pkl
       - name: lightgbm
-        path: ml/artifacts/models/lightgbm/model.pkl
-        preprocessor_path: ml/artifacts/models/lightgbm/preprocessor.pkl
+        path: ml/artifacts/models/lightgbm_5d/model.pkl
+        preprocessor_path: ml/artifacts/models/lightgbm_5d/preprocessor.pkl
       - name: xgboost
-        path: ml/artifacts/models/xgboost/model.pkl
-        preprocessor_path: ml/artifacts/models/xgboost/preprocessor.pkl
+        path: ml/artifacts/models/xgboost_5d/model.pkl
+        preprocessor_path: ml/artifacts/models/xgboost_5d/preprocessor.pkl

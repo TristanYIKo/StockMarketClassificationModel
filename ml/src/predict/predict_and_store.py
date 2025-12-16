@@ -14,6 +14,10 @@ import yaml
 import joblib
 import pandas as pd
 import numpy as np
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 
 class XGBWrapper:
@@ -30,8 +34,11 @@ class XGBWrapper:
     def predict_proba(self, X):
         return self.model.predict_proba(X)
 
-# Add parent to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
+# Add paths
+ml_path = os.path.join(os.path.dirname(__file__), '..', '..')
+project_root = os.path.join(ml_path, '..')
+sys.path.insert(0, ml_path)
+sys.path.insert(0, project_root)
 
 from src.utils.io import load_from_csv, load_from_supabase
 from src.utils.splits import create_time_splits, prepare_X_y
@@ -62,16 +69,16 @@ def get_raw_predictions(model, preprocessor, X: pd.DataFrame) -> np.ndarray:
     Get raw probabilities from model.
     
     Returns:
-        probs: (N, 3) array of [p_sell, p_hold, p_buy]
+        probs: (N, 2) array of [p_down, p_up]
     """
     X_processed = preprocessor.transform(X, split_name='inference')
     
     # Get probabilities
     probs = model.predict_proba(X_processed)
     
-    # Ensure shape is (N, 3) and ordered as [-1, 0, 1]
-    if probs.shape[1] != 3:
-        raise ValueError(f"Expected 3 classes, got {probs.shape[1]}")
+    # Ensure shape is (N, 2) and ordered as [-1, 1] (DOWN, UP)
+    if probs.shape[1] != 2:
+        raise ValueError(f"Expected 2 classes, got {probs.shape[1]}")
     
     return probs
 
@@ -98,9 +105,8 @@ def create_prediction_dataframe(
         'y_true': y,
         'pred_class_raw': pred_class_raw,
         'pred_class_final': pred_class_final,
-        'p_sell': probs_cal[:, 0],
-        'p_hold': probs_cal[:, 1],
-        'p_buy': probs_cal[:, 2],
+        'p_down': probs_cal[:, 0],
+        'p_up': probs_cal[:, 1],
         'confidence': confidence,
         'margin': margin
     })
@@ -232,12 +238,12 @@ def process_horizon_model(
         horizon, model_info['name'], 'test'
     )
     
-    # Save to parquet
+    # Save to CSV
     reports_dir = Path(f"ml/artifacts/reports/{horizon}")
     reports_dir.mkdir(parents=True, exist_ok=True)
     
-    df_val.to_parquet(reports_dir / f"preds_{model_info['name']}_val.parquet", index=False)
-    df_test.to_parquet(reports_dir / f"preds_{model_info['name']}_test.parquet", index=False)
+    df_val.to_csv(reports_dir / f"preds_{model_info['name']}_val.csv", index=False)
+    df_test.to_csv(reports_dir / f"preds_{model_info['name']}_test.csv", index=False)
     logger.info(f"Saved predictions to {reports_dir}")
     
     # Store in Supabase if requested

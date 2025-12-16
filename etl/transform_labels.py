@@ -1,10 +1,10 @@
 """
-Compute classification targets using triple-barrier method.
+Compute BINARY classification targets for UP/DOWN movement prediction.
 
 PRIMARY TARGET: y_class_1d
-- Triple-barrier classification: -1 (Sell), 0 (Hold), 1 (Buy)
-- Uses volatility-scaled returns with ±0.25 threshold
-- Prevents over-trading by explicitly modeling the Hold class
+- Binary classification: 1 (UP), -1 (DOWN)
+- Uses raw returns (positive = UP, negative = DOWN)
+- Simple, direct prediction of market direction
 
 CRITICAL: All targets use FORWARD-SHIFTED data (no leakage).
 - future_1d = close.shift(-1) uses NEXT day's close
@@ -20,16 +20,15 @@ def compute_labels(
     y_thresh: float = 0.002
 ) -> pd.DataFrame:
     """
-    Compute classification target using triple-barrier method.
+    Compute BINARY classification target: UP vs DOWN.
     
     PRIMARY TARGET: y_class_1d
-    - 1 (Buy): y_1d_vol > +0.25
-    - 0 (Hold): y_1d_vol between -0.25 and +0.25
-    - -1 (Sell): y_1d_vol < -0.25
+    - 1 (UP): future_1d > close (price went up)
+    - -1 (DOWN): future_1d <= close (price went down or flat)
     
     Args:
         close: Close prices (chronological)
-        vol_20: 20-day rolling volatility (for scaling)
+        vol_20: 20-day rolling volatility (kept for diagnostic purposes)
         y_thresh: Legacy parameter, kept for backwards compatibility
     
     Returns:
@@ -56,6 +55,7 @@ def compute_labels(
     y_5d_clipped = y_5d_raw.clip(-3 * std_5d, 3 * std_5d)
     
     # PRIMARY TARGETS: Volatility-scaled AND clipped (best of both worlds)
+    # Clip vol-scaled returns to ±3σ for outlier robuskept for diagnostics)
     # Clip vol-scaled returns to ±3σ for outlier robustness
     y_1d_vol_clip = y_1d_vol.clip(-3.0, 3.0)
     y_5d_vol_clip = y_5d_vol.clip(-3.0, 3.0)
@@ -63,24 +63,21 @@ def compute_labels(
     # Primary target alias (for default modeling)
     primary_target = y_1d_vol_clip
     
-    # TRIPLE-BARRIER CLASSIFICATION TARGET (v2.1 NEW)
-    # Uses volatility-scaled returns to separate signal from noise
-    # Three classes: 1 (Buy), 0 (Hold), -1 (Sell)
-    # Threshold: ±0.25 standard deviations
-    y_class_1d = pd.Series(0, index=y_1d_vol.index, dtype=int)  # Default: Hold
-    y_class_1d[y_1d_vol > 0.25] = 1   # Significant up move → Buy
-    y_class_1d[y_1d_vol < -0.25] = -1  # Significant down move → Sell
-    # NaN handling: keep as 0 (will be set to NaN in final DataFrame)
-    y_class_1d[y_1d_vol.isna()] = 0
-    y_class_1d = y_class_1d.where(y_1d_vol.notna(), None)  # NaN where input is NaN
+    # BINARY CLASSIFICATION TARGET (v3.0 - UP/DOWN ONLY)
+    # Simple binary classification: did price go up or down?
+    # Two classes: 1 (UP), -1 (DOWN)
+    y_class_1d = pd.Series(-1, index=y_1d_raw.index, dtype=int)  # Default: DOWN
+    y_class_1d[y_1d_raw > 0] = 1   # Positive return → UP
+    y_class_1d[y_1d_raw <= 0] = -1  # Negative or zero return → DOWN
+    # NaN handling
+    y_class_1d = y_class_1d.where(y_1d_raw.notna(), None)  # NaN where input is NaN
     
-    # 5-DAY CLASSIFICATION TARGET (for weekly predictions)
-    # Same triple-barrier method but predicting 5 days ahead
-    y_class_5d = pd.Series(0, index=y_5d_vol.index, dtype=int)  # Default: Hold
-    y_class_5d[y_5d_vol > 0.25] = 1   # Significant up move → Buy
-    y_class_5d[y_5d_vol < -0.25] = -1  # Significant down move → Sell
-    y_class_5d[y_5d_vol.isna()] = 0
-    y_class_5d = y_class_5d.where(y_5d_vol.notna(), None)  # NaN where input is NaN
+    # 5-DAY BINARY CLASSIFICATION TARGET
+    # Same binary method but predicting 5 days ahead
+    y_class_5d = pd.Series(-1, index=y_5d_raw.index, dtype=int)  # Default: DOWN
+    y_class_5d[y_5d_raw > 0] = 1   # Positive return → UP
+    y_class_5d[y_5d_raw <= 0] = -1  # Negative or zero return → DOWN
+    y_class_5d = y_class_5d.where(y_5d_raw.notna(), None)  # NaN where input is NaN
     
     # Binary classification targets (legacy, for comparison)
     y_1d_class = (future_1d > close).astype(int)

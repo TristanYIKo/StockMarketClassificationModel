@@ -143,20 +143,20 @@ def train_lightgbm(X_train, y_train, class_weights, config):
 
 
 def train_xgboost(X_train, y_train, class_weights, config):
-    """Train XGBoost model."""
+    """Train XGBoost model for BINARY classification."""
     logger = logging.getLogger(__name__)
     logger.info("\n" + "=" * 70)
-    logger.info("TRAINING: XGBOOST")
+    logger.info("TRAINING: XGBOOST (BINARY)")
     logger.info("=" * 70)
     
     params = config['models']['xgboost']['params']
     
     # XGBoost requires labels to be 0-indexed
-    # Map: -1 -> 0, 0 -> 1, 1 -> 2
-    y_train_mapped = y_train.map({-1: 0, 0: 1, 1: 2})
+    # Map: -1 (DOWN) -> 0, 1 (UP) -> 1
+    y_train_mapped = y_train.map({-1: 0, 1: 1})
     
     # Convert class weights to sample weights (use mapped labels for indexing)
-    class_weights_mapped = {0: class_weights[-1], 1: class_weights[0], 2: class_weights[1]}
+    class_weights_mapped = {0: class_weights[-1], 1: class_weights[1]}
     sample_weights = np.array([class_weights_mapped[y] for y in y_train_mapped])
     
     model = xgb.XGBClassifier(
@@ -172,7 +172,7 @@ def train_xgboost(X_train, y_train, class_weights, config):
     logger.info("XGBoost trained successfully")
     
     # Wrap model to handle label mapping
-    label_mapping = {0: -1, 1: 0, 2: 1}
+    label_mapping = {0: -1, 1: 1}
     return XGBWrapper(model, label_mapping)
 
 
@@ -295,7 +295,7 @@ def main():
     models = {}
     all_results = {}
     
-    target_names = ['Sell (-1)', 'Hold (0)', 'Buy (1)']
+    target_names = ['Down (-1)', 'Up (1)']
     
     # Create figures directory once
     figures_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'artifacts', 'figures')
