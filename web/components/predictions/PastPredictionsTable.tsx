@@ -58,48 +58,67 @@ export function PastPredictionsTable({ data }: PastPredictionsTableProps) {
                                 <TableHead className="text-slate-400">Close Price</TableHead>
                                 <TableHead className="text-slate-400">Prediction</TableHead>
                                 <TableHead className="text-slate-400">Confidence</TableHead>
+                                <TableHead className="text-slate-400">Outcome Price</TableHead>
                                 <TableHead className="text-slate-400 text-right">Outcome</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {filteredData.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={5} className="h-24 text-center text-slate-500">
+                                    <TableCell colSpan={6} className="h-24 text-center text-slate-500">
                                         No history available.
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                filteredData.map((row, idx) => (
-                                    <TableRow key={idx} className="border-slate-800 hover:bg-slate-800/30">
-                                        <TableCell className="font-medium text-slate-300">{row.date}</TableCell>
-                                        <TableCell className="text-slate-400 font-mono">
-                                            ${row.close?.toFixed(2) ?? '---'}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant="outline" className={`border ${getBadgeColor(row.direction)}`}>
-                                                {row.direction}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-slate-400">
-                                            {(row.confidence * 100).toFixed(1)}% <span className="text-slate-600 text-xs ml-1">(Prob)</span>
-                                        </TableCell>
-                                        <TableCell className="text-right flex justify-end items-center gap-2">
-                                            {/* Logic for outcome checking would go here. For now simpler display */}
-                                            {row.actual_return !== undefined ? (
-                                                <div className={`flex items-center gap-1.5 ${row.actual_return > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                                    <span className="font-mono">{(row.actual_return * 100).toFixed(2)}%</span>
-                                                    {row.direction === 'UP' && row.actual_return > 0 ? <CheckCircle2 className="w-4 h-4" /> :
-                                                        row.direction === 'DOWN' && row.actual_return < 0 ? <CheckCircle2 className="w-4 h-4" /> :
-                                                            <XCircle className="w-4 h-4 text-slate-500" />}
-                                                </div>
-                                            ) : (
-                                                <span className="text-slate-600 flex items-center gap-1 justify-end">
-                                                    Pending <MinusCircle className="w-4 h-4" />
-                                                </span>
-                                            )}
-                                        </TableCell>
-                                    </TableRow>
-                                ))
+                                filteredData.map((row, idx) => {
+                                    // Calculate outcome price if we have actual return
+                                    const outcomePrice = row.actual_return !== undefined && row.close 
+                                        ? row.close * Math.exp(row.actual_return)
+                                        : undefined;
+                                    
+                                    // Determine if prediction was correct
+                                    const isCorrect = row.actual_return !== undefined 
+                                        ? (row.direction === 'UP' && row.actual_return > 0) || (row.direction === 'DOWN' && row.actual_return < 0)
+                                        : undefined;
+
+                                    return (
+                                        <TableRow key={idx} className="border-slate-800 hover:bg-slate-800/30">
+                                            <TableCell className="font-medium text-slate-300">{row.date}</TableCell>
+                                            <TableCell className="text-slate-400 font-mono">
+                                                {row.close !== undefined ? `$${row.close.toFixed(2)}` : 'N/A'}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant="outline" className={`border ${getBadgeColor(row.direction)}`}>
+                                                    {row.direction}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-slate-400">
+                                                {(row.confidence * 100).toFixed(1)}%
+                                            </TableCell>
+                                            <TableCell className="text-slate-400 font-mono">
+                                                {outcomePrice !== undefined ? `$${outcomePrice.toFixed(2)}` : 
+                                                    <span className="text-slate-600 text-sm">Not Available</span>}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                {row.actual_return !== undefined ? (
+                                                    <div className="flex items-center gap-2 justify-end">
+                                                        <span className={`font-mono ${row.actual_return > 0 ? 'text-emerald-500' : row.actual_return < 0 ? 'text-rose-500' : 'text-slate-400'}`}>
+                                                            {row.actual_return > 0 ? '+' : ''}{(row.actual_return * 100).toFixed(2)}%
+                                                        </span>
+                                                        {isCorrect ? 
+                                                            <CheckCircle2 className="w-4 h-4 text-emerald-500" /> :
+                                                            <XCircle className="w-4 h-4 text-rose-500" />
+                                                        }
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-slate-600 text-sm flex items-center gap-1 justify-end">
+                                                        Not Available <MinusCircle className="w-4 h-4" />
+                                                    </span>
+                                                )}
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })
                             )}
                         </TableBody>
                     </Table>
