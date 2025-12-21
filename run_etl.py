@@ -61,6 +61,17 @@ if __name__ == "__main__":
         print("\n" + "="*70)
         print("✅ ETL Pipeline completed successfully!")
         print("="*70)
+        
+        # Automatically generate predictions for next trading day
+        print("\n" + "="*70)
+        print("Generating predictions for next trading day...")
+        print("="*70)
+        try:
+            from quick_add_predictions_all_symbols import main as generate_predictions
+            generate_predictions()
+        except Exception as pred_error:
+            print(f"⚠️  Warning: Prediction generation failed: {pred_error}")
+            print("ETL completed successfully, but predictions were not generated.")
     except Exception as e:
         print("\n" + "="*70)
         print(f"❌ ETL Pipeline failed: {e}")

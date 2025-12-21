@@ -17,6 +17,8 @@ SYMBOLS = ['SPY', 'QQQ', 'IWM', 'DIA']
 
 def generate_predictions_for_symbol(db: SupabaseDB, symbol: str, horizon: str):
     """Generate predictions for a single symbol and horizon."""
+    import pandas_market_calendars as mcal
+    from datetime import datetime
     
     # Get asset ID
     try:
@@ -26,41 +28,56 @@ def generate_predictions_for_symbol(db: SupabaseDB, symbol: str, horizon: str):
         print(f"  ⚠️  Symbol {symbol} not found in assets table. Skipping.")
         return 0
     
-    # Get dates with features
+    # Get the latest date with features
     try:
-        features_result = db.client.table('features_daily')\
+        latest_result = db.client.table('features_daily')\
             .select('date')\
             .eq('asset_id', asset_id)\
-            .gte('date', '2025-12-06')\
-            .order('date', desc=False)\
+            .order('date', desc=True)\
+            .limit(1)\
             .execute()
+        
+        if not latest_result.data:
+            print(f"  ⚠️  No features found for {symbol}")
+            return 0
+        
+        latest_date = latest_result.data[0]['date']
+        print(f"  Latest feature date: {latest_date}")
+        
+        # Find next trading day after latest_date
+        nyse = mcal.get_calendar('NYSE')
+        latest_dt = datetime.fromisoformat(latest_date).date()
+        schedule = nyse.schedule(start_date=latest_dt, end_date=latest_dt + timedelta(days=10))
+        
+        if len(schedule) <= 1:
+            print(f"  ⚠️  No future trading days found after {latest_date}")
+            return 0
+        
+        next_trading_day = schedule.index[1].date().isoformat()
+        print(f"  Next trading day (prediction target): {next_trading_day}")
+        
     except Exception as e:
-        print(f"  ⚠️  No features found for {symbol}")
+        print(f"  ⚠️  Error finding dates: {e}")
         return 0
     
-    # Get existing predictions
+    # Check if prediction already exists for next trading day
     try:
         pred_result = db.client.table('model_predictions_classification')\
             .select('date')\
             .eq('symbol', symbol)\
             .eq('horizon', horizon)\
-            .gte('date', '2025-12-06')\
+            .eq('date', next_trading_day)\
             .execute()
         
-        existing_pred_dates = set(row['date'] for row in pred_result.data)
+        if pred_result.data:
+            print(f"  ✓ Prediction already exists for {next_trading_day}")
+            return 0
     except:
-        existing_pred_dates = set()
+        pass
     
-    # Find missing dates
-    missing_dates = []
-    for row in features_result.data:
-        if row['date'] not in existing_pred_dates:
-            missing_dates.append(row['date'])
-    
-    if not missing_dates:
-        return 0
-    
-    print(f"  Found {len(missing_dates)} dates needing predictions")
+    # We need to predict for the next trading day
+    missing_dates = [next_trading_day]
+    print(f"  Generating prediction for {next_trading_day}")
     
     # Generate predictions (using placeholder values)
     predictions_to_insert = []
