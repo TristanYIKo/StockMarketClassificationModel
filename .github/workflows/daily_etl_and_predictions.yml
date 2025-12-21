@@ -2,10 +2,11 @@ name: Daily ETL and Predictions
 
 on:
   schedule:
-    # Run at 5 PM UTC daily (adjust timezone as needed)
+    # Run at 5 PM UTC on weekdays only (Monday-Friday)
     # For 5 PM EST: 22:00 UTC (during standard time)
     # For 5 PM EDT: 21:00 UTC (during daylight time)
-    - cron: '0 22 * * *'
+    # Stock markets are closed on weekends, so we skip Saturday (6) and Sunday (0)
+    - cron: '0 22 * * 1-5'
   
   # Allow manual trigger
   workflow_dispatch:
