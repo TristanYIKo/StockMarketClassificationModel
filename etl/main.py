@@ -48,14 +48,50 @@ def upsert_events(db: SupabaseDB, events_df: pd.DataFrame):
 
 def run_etl(start: str, end: str, mode: str):
     db = SupabaseDB()
+    nyse = mcal.get_calendar("NYSE")
     
     # 0. Auto-detect start date if not provided
     if start is None:
-        latest = db.get_latest_date()
-        if latest:
-            start_date = date.fromisoformat(latest) + timedelta(days=1)
-            start = start_date.isoformat()
-            print(f"✅ Auto-detected update start date: {start} (Daily Mode)")
+        # Check all critical tables for last date
+        tables = ['daily_bars', 'features_daily', 'labels_daily']
+        last_dates = []
+        
+        for table in tables:
+            try:
+                response = db.client.table(table)\
+                    .select('date')\
+                    .order('date', desc=True)\
+                    .limit(1)\
+                    .execute()
+                
+                if response.data and len(response.data) > 0:
+                    date_str = response.data[0]['date']
+                    if 'T' in date_str:
+                        date_str = date_str.split('T')[0]
+                    last_dates.append(date.fromisoformat(date_str))
+                    print(f"  {table}: last date = {date_str}")
+            except Exception as e:
+                print(f"  Warning: Could not check {table}: {e}")
+        
+        if last_dates:
+            # Use the minimum date across tables to ensure consistency
+            latest = min(last_dates)
+            print(f"✅ Last complete date in DB: {latest}")
+            
+            # Find the next trading day after latest
+            end_date_temp = date.fromisoformat(end)
+            schedule = nyse.schedule(start_date=latest, end_date=end_date_temp)
+            
+            if len(schedule) <= 1:
+                # No new trading days
+                print(f"✅ Database is up to date. Last date: {latest}, End date: {end_date_temp}")
+                print("No new trading days to process.")
+                return
+            
+            # Get next trading day after latest
+            next_trading_day = schedule.index[1].date()
+            start = next_trading_day.isoformat()
+            print(f"✅ Auto-detected update start date: {start} (next trading day after {latest})")
             mode = "incremental"
         else:
             start = "2015-01-01"
@@ -64,6 +100,14 @@ def run_etl(start: str, end: str, mode: str):
 
     start_date = date.fromisoformat(start)
     end_date = date.fromisoformat(end)
+    
+    # Verify we have trading days in the range
+    schedule = nyse.schedule(start_date=start_date, end_date=end_date)
+    if len(schedule) == 0:
+        print(f"⚠️ No trading days between {start_date} and {end_date}. Nothing to update.")
+        return
+    
+    print(f"📊 Processing {len(schedule)} trading days from {start_date} to {end_date}")
     
     # Lookback window for rolling features (ensures 200-day MA is correct)
     LOOKBACK_DAYS = 365
