@@ -25,6 +25,7 @@ from .load_db import (
     upsert_actions,
     upsert_features_json,
     upsert_labels,
+    upsert_outcome_prices,
     upsert_macro_catalog,
     upsert_macro_daily,
 )
@@ -329,28 +330,26 @@ def run_etl(start: str, end: str, mode: str):
         
         # Compute Labels
         # Labels need FUTURE data. 
-        # If we are at 'today', future labels will be NaN/Wait.
-        # But compute_labels handles this.
+        # We now keep ALL rows (including those without future data)
+        # Rows without future data will have NULL for outcome_price and y_class
         vol_20 = full_features["vol_20"]
         
         # Pass FULL bars to compute labels (needs shift)
-        labels = compute_labels(bars["close"], vol_20, y_thresh=cfg.y_thresh)
+        # keep_incomplete=True means we keep rows without future data
+        labels = compute_labels(bars["close"], vol_20, y_thresh=cfg.y_thresh, keep_incomplete=True)
         labels.index = pd.to_datetime(bars["date"])[: len(labels)].dt.date
         
         # Filter labels for update range
-        # Note: We might want to re-update slightly past labels if 5d target changes?
-        # But kept simple: update labels for start_date onwards.
-        # Labels for T-5 might become valid at T. 
-        # If backfilling, we have future. If today, valid labels are null.
-        # Ideally we process labels for all rows where we have data?
-        # To be safe, we upsert labels for the new window.
-        
-        # Convert index to datetime for filtering
         labels_idx_dt = pd.to_datetime(labels.index)
         labels_to_upsert = labels[labels_idx_dt >= pd.to_datetime(start_date)]
         
         labels_to_upsert.index.name = "date"
+        
+        # Upsert labels (y_class_1d, y_class_5d, etc.)
         upsert_labels(db, asset_id_map[sym], labels_to_upsert)
+        
+        # Upsert outcome prices (future close prices, may be NULL)
+        upsert_outcome_prices(db, asset_id_map[sym], labels_to_upsert)
         
         print(f"  ✅ Upserted {sym}: {len(features_json_df)} features, {len(labels_to_upsert)} labels")
 

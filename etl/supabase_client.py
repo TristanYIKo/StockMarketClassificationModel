@@ -61,6 +61,25 @@ class SupabaseDB:
             chunk = data[i:i+1000]
             self.client.table("daily_bars").upsert(chunk, on_conflict="asset_id,date").execute()
 
+    def upsert_outcome_prices(self, rows):
+        """
+        Upsert outcome prices (future close prices) to daily_bars.
+        Rows format: (asset_id, date, outcome_price_1d, outcome_price_5d)
+        """
+        data = [
+            {
+                "asset_id": row[0],
+                "date": str(row[1]),
+                "outcome_price_1d": row[2],
+                "outcome_price_5d": row[3]
+            }
+            for row in rows
+        ]
+        # Batch upsert in chunks of 1000
+        for i in range(0, len(data), 1000):
+            chunk = data[i:i+1000]
+            self.client.table("daily_bars").upsert(chunk, on_conflict="asset_id,date").execute()
+
     def upsert_corporate_actions(self, rows):
         data = [
             {

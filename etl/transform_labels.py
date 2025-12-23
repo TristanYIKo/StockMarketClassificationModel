@@ -17,7 +17,8 @@ import pandas as pd
 def compute_labels(
     close: pd.Series, 
     vol_20: pd.Series,  # 20-day realized volatility for scaling
-    y_thresh: float = 0.002
+    y_thresh: float = 0.002,
+    keep_incomplete: bool = True  # NEW: Keep rows without future data
 ) -> pd.DataFrame:
     """
     Compute BINARY classification target: UP vs DOWN.
@@ -30,9 +31,10 @@ def compute_labels(
         close: Close prices (chronological)
         vol_20: 20-day rolling volatility (kept for diagnostic purposes)
         y_thresh: Legacy parameter, kept for backwards compatibility
+        keep_incomplete: If True, keeps rows without future data (labels will be NULL)
     
     Returns:
-        DataFrame with y_class_1d and supporting diagnostic columns
+        DataFrame with y_class_1d, outcome prices, and supporting diagnostic columns
     """
     # Forward-shifted closes (FUTURE data, no leakage)
     future_1d = close.shift(-1)
@@ -86,6 +88,10 @@ def compute_labels(
     y_thresh_class = (ret_1d > y_thresh).astype(int)
     
     labels = pd.DataFrame({
+        # OUTCOME PRICES (actual future prices for making predictions)
+        "outcome_price_1d": future_1d,
+        "outcome_price_5d": future_5d,
+        
         # PRIMARY REGRESSION TARGETS (optimized)
         "primary_target": primary_target,
         "y_1d_vol_clip": y_1d_vol_clip,
@@ -109,6 +115,10 @@ def compute_labels(
         "y_thresh": y_thresh_class,
     })
     
-    # Drop last rows where future labels not available
-    labels = labels.iloc[:-5] if len(labels) >= 5 else labels.iloc[0:0]
+    # NEW BEHAVIOR: Keep incomplete rows if requested
+    # This allows inserting today's data even if we don't have tomorrow's outcome yet
+    if not keep_incomplete:
+        # Old behavior: Drop last 5 rows where future labels not available
+        labels = labels.iloc[:-5] if len(labels) >= 5 else labels.iloc[0:0]
+    
     return labels

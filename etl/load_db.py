@@ -95,6 +95,28 @@ def upsert_labels(db: SupabaseDB, asset_id: str, labels_df: pd.DataFrame):
         db.upsert_labels_daily(rows)
 
 
+def upsert_outcome_prices(db: SupabaseDB, asset_id: str, labels_df: pd.DataFrame):
+    """
+    Upsert outcome prices (future close prices) to daily_bars.
+    This allows us to store predictions before the outcome is known.
+    """
+    rows = []
+    for r in labels_df.itertuples():
+        outcome_1d = float(r.outcome_price_1d) if hasattr(r, 'outcome_price_1d') and pd.notnull(r.outcome_price_1d) else None
+        outcome_5d = float(r.outcome_price_5d) if hasattr(r, 'outcome_price_5d') and pd.notnull(r.outcome_price_5d) else None
+        
+        row = (
+            asset_id,
+            r.Index,  # date
+            outcome_1d,
+            outcome_5d
+        )
+        rows.append(row)
+    
+    if rows:
+        db.upsert_outcome_prices(rows)
+
+
 def upsert_macro_catalog(db: SupabaseDB, macro_series_dict: Dict[str, str]):
     """
     Upsert macro series catalog.
