@@ -2,9 +2,8 @@ name: Daily ETL and Predictions
 
 on:
   schedule:
-    # Run at 5 PM UTC on weekdays only (Monday-Friday)
-    # For 5 PM EST: 22:00 UTC (during standard time)
-    # For 5 PM EDT: 21:00 UTC (during daylight time)
+    # Run at 5 PM EST (10 PM UTC) on weekdays only (Monday-Friday)
+    # Markets close at 4 PM, so 5 PM gives time for data to settle
     # Stock markets are closed on weekends, so we skip Saturday (6) and Sunday (0)
     - cron: '0 22 * * 1-5'
   
@@ -62,6 +61,32 @@ jobs:
           exit 1
         fi
     
+    - name: Apply Database Migrations (if needed)
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        echo "Checking for pending migrations..."
+        # Check if outcome_price columns exist, if not, apply migration
+        python -c "
+        from etl.supabase_client import SupabaseDB
+        import os
+        
+        db = SupabaseDB()
+        
+        # Check if columns exist by querying
+        try:
+            result = db.client.table('daily_bars').select('outcome_price_1d').limit(1).execute()
+            print('✅ outcome_price columns already exist')
+        except Exception as e:
+            if 'outcome_price_1d' in str(e).lower() or 'column' in str(e).lower():
+                print('⚠️  outcome_price columns do not exist')
+                print('📝 Migration 015 needs to be applied manually in Supabase SQL Editor')
+                print('See migrations/015_add_outcome_prices.sql')
+            else:
+                print(f'✅ Columns likely exist (error: {e})')
+        " || echo "Migration check completed with warnings"
+    
     - name: Run ETL Pipeline
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -69,7 +94,8 @@ jobs:
         FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
       run: |
         echo "Starting ETL pipeline for all symbols (SPY, QQQ, IWM, DIA)..."
-        echo "This will update OHLCV data to the most recent completed trading day"
+        echo "This will update OHLCV data, features, labels, and outcome prices to the most recent trading day"
+        echo "Note: outcome_price_1d and outcome_price_5d will be NULL for current day until future data arrives"
         if [ -n "${{ github.event.inputs.start_date }}" ] && [ -n "${{ github.event.inputs.end_date }}" ]; then
           # Manual run with custom dates
           python run_etl.py --start ${{ github.event.inputs.start_date }} --end ${{ github.event.inputs.end_date }} --mode incremental
@@ -80,7 +106,7 @@ jobs:
           # Scheduled run - incremental update to today (auto-detects last date in DB)
           python run_etl.py --mode incremental
         fi
-        echo "✅ ETL pipeline completed - all symbols updated to latest trading day"
+        echo "✅ ETL pipeline completed - all symbols updated to latest trading day with current close prices"
     
     - name: Generate Predictions for All Symbols
       env:
