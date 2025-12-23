@@ -40,7 +40,7 @@ if __name__ == "__main__":
     # Check if today is a weekend (for scheduled runs)
     if not args.force and not args.start and is_weekend(date.today()):
         print("="*70)
-        print("⏸️  ETL Pipeline skipped - Weekend detected")
+        print("  ETL Pipeline skipped - Weekend detected")
         print("="*70)
         print("Stock markets are closed on weekends (Saturday and Sunday).")
         print("The ETL pipeline will run on the next trading day.")
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     try:
         run_etl(args.start, end_date, args.mode)
         print("\n" + "="*70)
-        print("✅ ETL Pipeline completed successfully!")
+        print("ETL Pipeline completed successfully!")
         print("="*70)
         
         # Automatically generate predictions for next trading day
@@ -67,13 +67,29 @@ if __name__ == "__main__":
         print("Generating predictions for next trading day...")
         print("="*70)
         try:
+            # Try to use real model-based predictions first
+            import importlib.util
+            spec = importlib.util.spec_from_file_location("generate_real_predictions", "generate_real_predictions.py")
+            pred_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(pred_module)
+            pred_module.main()
+        except FileNotFoundError:
+            # Fall back to placeholder predictions if models don't exist
+            print("  Trained models not found. Using placeholder predictions.")
+            print("   Train models with: python train_models_1d.py && python train_models_5d.py")
             from quick_add_predictions_all_symbols import main as generate_predictions
             generate_predictions()
         except Exception as pred_error:
-            print(f"⚠️  Warning: Prediction generation failed: {pred_error}")
-            print("ETL completed successfully, but predictions were not generated.")
+            print(f"  Model prediction failed: {pred_error}")
+            print("   Falling back to placeholder predictions...")
+            try:
+                from quick_add_predictions_all_symbols import main as generate_predictions
+                generate_predictions()
+            except Exception as e2:
+                print(f"  Prediction generation failed: {e2}")
+                print("ETL completed successfully, but predictions were not generated.")
     except Exception as e:
         print("\n" + "="*70)
-        print(f"❌ ETL Pipeline failed: {e}")
+        print(f" ETL Pipeline failed: {e}")
         print("="*70)
         sys.exit(1)

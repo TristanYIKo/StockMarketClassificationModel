@@ -115,8 +115,18 @@ jobs:
       run: |
         echo "Generating predictions for next available trading day..."
         echo "Processing all symbols: SPY, QQQ, IWM, DIA (1d and 5d horizons)"
-        echo "Note: Using placeholder predictions (55% UP). For actual model predictions, train and commit models."
-        python quick_add_predictions_all_symbols.py
+        echo "Attempting to use trained XGBoost models for real predictions..."
+        
+        # Try real model predictions first, fall back to placeholder if models don't exist
+        if [ -f "ml/artifacts/models/xgboost_1d/model.pkl" ] && [ -f "ml/artifacts/models/xgboost_5d/model.pkl" ]; then
+          echo "✅ Trained models found - using real model-based predictions"
+          python generate_real_predictions.py
+        else
+          echo "⚠️  Trained models not found - using placeholder predictions (55% UP)"
+          echo "   To use real models: train and commit models to repository"
+          python quick_add_predictions_all_symbols.py
+        fi
+        
         echo "✅ Predictions generated for next trading day - all symbols updated"
     
     - name: Verify Data Update

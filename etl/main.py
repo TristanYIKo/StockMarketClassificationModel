@@ -77,7 +77,7 @@ def run_etl(start: str, end: str, mode: str):
         if last_dates:
             # Use the minimum date across tables to ensure consistency
             latest = min(last_dates)
-            print(f"✅ Last complete date in DB: {latest}")
+            print(f"Last complete date in DB: {latest}")
             
             # Find the next trading day after latest
             end_date_temp = date.fromisoformat(end)
@@ -85,14 +85,14 @@ def run_etl(start: str, end: str, mode: str):
             
             if len(schedule) <= 1:
                 # No new trading days
-                print(f"✅ Database is up to date. Last date: {latest}, End date: {end_date_temp}")
+                print(f"Database is up to date. Last date: {latest}, End date: {end_date_temp}")
                 print("No new trading days to process.")
                 return
             
             # Get next trading day after latest
             next_trading_day = schedule.index[1].date()
             start = next_trading_day.isoformat()
-            print(f"✅ Auto-detected update start date: {start} (next trading day after {latest})")
+            print(f"Auto-detected update start date: {start} (next trading day after {latest})")
             mode = "incremental"
         else:
             start = "2015-01-01"
@@ -351,7 +351,7 @@ def run_etl(start: str, end: str, mode: str):
         # Upsert outcome prices (future close prices, may be NULL)
         upsert_outcome_prices(db, asset_id_map[sym], labels_to_upsert)
         
-        print(f"  ✅ Upserted {sym}: {len(features_json_df)} features, {len(labels_to_upsert)} labels")
+        print(f"  Upserted {sym}: {len(features_json_df)} features, {len(labels_to_upsert)} labels")
 
     db.close()
     print("ETL complete!")

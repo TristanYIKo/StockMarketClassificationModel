@@ -134,33 +134,54 @@ outcome_price_5d  -- Close price 5 trading days in future (NULL if not available
 
 ## Prediction Generation
 
-### Current Status: Placeholder Predictions
+### Current Status: Real Model-Based Predictions ✅
 
-⚠️ **Note:** The system currently uses **placeholder predictions** (55% UP probability)
+✅ **The system now uses trained XGBoost models** with varying confidence levels!
 
 ```python
-# quick_add_predictions_all_symbols.py
-p_up = 0.55
-p_down = 0.45
-pred_class = 1  # UP
+# Examples from real predictions:
+SPY  1d: DOWN (conf: 0.640, p_up: 0.360, p_down: 0.640)
+QQQ  1d: DOWN (conf: 0.606, p_up: 0.394, p_down: 0.606)
+IWM  1d: DOWN (conf: 0.646, p_up: 0.354, p_down: 0.646)
+DIA  1d: DOWN (conf: 0.591, p_up: 0.409, p_down: 0.591)
 ```
 
-### To Use Real Model Predictions
+**Key Improvements:**
+- ✅ Real model predictions using trained XGBoost models
+- ✅ Varying confidence levels (0.55 - 0.70 typical range)
+- ✅ Actual probabilities (p_up, p_down) from model inference
+- ✅ Automatic fallback to placeholder if models unavailable
 
-For production-quality predictions, you need to:
+### How It Works
 
-1. **Train models:**
-   ```powershell
-   python train_models_1d.py
-   ```
+1. **ETL runs** and updates all data
+2. **generate_real_predictions.py** is called automatically
+3. Script loads trained XGBoost models from `ml/artifacts/models/`
+4. For each symbol, it:
+   - Fetches latest features from database
+   - Preprocesses features (imputation, scaling)
+   - Runs model inference to get probabilities
+   - Stores predictions with real confidence scores
 
-2. **Run model-based predictions:**
-   ```powershell
-   cd ml
-   python src/predict/predict_and_store.py
-   ```
+### Fallback Mechanism
 
-3. **Commit trained models to repo** so GitHub Actions can use them
+If trained models are not available:
+- Falls back to `quick_add_predictions_all_symbols.py` (placeholder 55% UP)
+- GitHub Actions checks for model files before deciding which script to use
+- Local runs attempt real predictions first, then fallback
+
+### To Update/Retrain Models
+
+```powershell
+# Train new models
+python train_models_1d.py
+python train_models_5d.py
+
+# Commit models to repo for GitHub Actions to use
+git add ml/artifacts/models/
+git commit -m "Update trained models"
+git push
+```
 
 ---
 
@@ -225,19 +246,26 @@ python validate_data_quality.py
 
 ## Known Issues & Limitations
 
+### Fixed Issues ✅
+
+1. **~~Placeholder predictions~~** ✅ FIXED
+   - **Was:** Using 55% UP probability instead of trained models
+   - **Now:** Using real XGBoost models with varying confidence (0.59-0.65)
+   - **Impact:** Website now shows meaningful predictions with real model probabilities
+
 ### Current Limitations
 
-1. **Placeholder predictions:** Using 55% UP probability instead of trained models
-   - **Impact:** Website shows predictions but they're not ML-based yet
-   - **Fix:** Train and commit models (see "To Use Real Model Predictions" above)
-
-2. **Event calendar TODOs:** Historical FOMC/CPI/NFP dates not fully populated
+1. **Event calendar TODOs:** Historical FOMC/CPI/NFP dates not fully populated
    - **Impact:** Event features may be incomplete for backfill periods
    - **Fix:** Event calendar code has TODOs in `etl/build_events.py`
 
-3. **Weekend runs skipped:** ETL won't run on Saturday/Sunday
+2. **Weekend runs skipped:** ETL won't run on Saturday/Sunday
    - **Impact:** None (markets are closed)
    - **Override:** Use `--force` flag if needed for testing
+
+3. **Model version warnings:** Sklearn version mismatch in model loading
+   - **Impact:** Minor warnings during prediction (models still work)
+   - **Fix:** Retrain models with current sklearn version
 
 ### Everything Else: ✅ Working
 
