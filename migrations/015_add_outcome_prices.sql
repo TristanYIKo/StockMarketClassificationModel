@@ -1,5 +1,5 @@
 -- Migration: Add outcome price columns for forward-looking predictions
--- Date: 2025-12-22
+-- Date: 2025-12-22 
 --
 -- OBJECTIVE: Store actual future prices separately from computed labels
 -- This allows us to:
