@@ -1,8 +1,6 @@
-# ETF Classification Model - 1-Day Trading Signals
+# ETF Classification Model - 1,5,20 -Day Trading Signals
 
 Triple-barrier classification system for SPY, QQQ, DIA, IWM using 83 optimized features and volatility-aware thresholds.
-
-**Target:** `y_class_1d` → -1 (Sell), 0 (Hold), 1 (Buy) using ±0.25 volatility threshold
 
 ## Data Sources
 
