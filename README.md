@@ -1,226 +1,259 @@
-# ETF Classification Model - 1-Day Trading Signals
+# Market Direction Model
 
-Triple-barrier classification system for SPY, QQQ, DIA, IWM using 83 optimized features and volatility-aware thresholds.
+Multi-horizon **binary direction classifiers** for four US index ETFs — SPY, QQQ,
+DIA, IWM — served through a Next.js dashboard.
 
-**Target:** `y_class_1d` → -1 (Sell), 0 (Hold), 1 (Buy) using ±0.25 volatility threshold
+Each model answers one question: *will the close `h` trading days from now be
+higher than today's close?* Three horizons are trained and served: **1D, 5D, 20D**.
 
-## Data Sources
+---
 
-**ETFs**: SPY, QQQ, DIA, IWM (daily OHLCV)
+## Architecture
 
-**FRED Macro** (ET aligned):
-- Treasury yields: DGS2, DGS10
-- Fed funds: FEDFUNDS, EFFR
-- Inflation: T10YIE
-- Credit: BAMLH0A0HYM2 (High Yield OAS)
-- Liquidity: WALCL (Fed balance sheet), RRPONTSYD (ON RRP)
-- SOFR
+```
+yfinance ─┐
+FRED ─────┼──▶ etl/  ──▶ Supabase ──▶ ml/src/data ──▶ ml/src/train ──▶ artifacts
+NYSE cal ─┘   (features,  (daily_bars,   (dataset       (per-horizon    (models +
+               labels)    features_daily, builder)       models)         report)
+                          labels_daily)                      │
+                                                             ▼
+                                        Supabase.predictions ◀── ml/src/predict
+                                                             │
+                                                             ▼
+                                                        web/ (Next.js)
+```
 
-**Cross-Asset Proxies** (ET close prices):
-- Volatility: ^VIX, ^VIX9D, ^VVIX
-- Dollar: UUP
-- Commodities: GLD (gold), USO (oil)
-- Credit: HYG, LQD
-- Bonds: TLT
-- Breadth: RSP (equal-weight S&P)
+### Daily loop (GitHub Actions, `.github/workflows/daily_pipeline.yml`)
 
-**Events Calendar** (ET trading days, no leakage):
-- Month/quarter end
-- Options expiry weeks
-- FOMC meetings
-- CPI releases
-- NFP releases
+1. `run_etl.py --mode incremental` — auto-detects the last loaded session and
+   pulls forward to today: OHLCV, macro series, cross-asset proxies, events,
+   engineered features, and labels.
+2. `python -m ml.src.predict.predict --latest` — one prediction per symbol ×
+   horizon from the newest feature row.
+3. `python -m ml.src.predict.predict --resolve` — fills in outcomes for calls
+   whose target session has since closed.
+
+### Monthly loop (`.github/workflows/monthly_retrain.yml`)
+
+Retrains all three horizons, rebuilds stored predictions, and commits the
+refreshed artifacts. The commit doubles as repo activity, which is what stops
+GitHub from disabling the daily schedule after 60 idle days.
+
+---
 
 ## Setup
 
-### 1. Environment Variables
-
-```powershell
-setx SUPABASE_DB_URL "postgresql://postgres:<password>@<host>:5432/postgres"
-setx FRED_API_KEY "your_fred_api_key"
+```bash
+pip install -r requirements.txt -r ml/requirements.txt
 ```
 
-Get a free FRED API key at: https://fred.stlouisfed.org/docs/api/api_key.html
+`.env` in the repo root (pipeline — needs write access):
 
-### 2. Run Migrations
-
-Apply both migrations in order via Supabase SQL editor or psql:
-- `migrations/001_init_schema.sql`
-- `migrations/002_add_context_data.sql`
-
-### 3. Install Python Dependencies
-
-```powershell
-pip install -r requirements.txt
+```
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_SERVICE_KEY=<service_role key>   # preferred; bypasses RLS
+SUPABASE_KEY=<anon key>                   # fallback only
+FRED_API_KEY=<key>
 ```
 
-## Run ETL
+`web/.env.local` (site — read-only, **server-side only**):
 
-**Full backfill** (downloads all history):
-```powershell
-python -m etl.main --start 2000-01-01 --end 2025-12-12 --mode backfill
+```
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_KEY=<anon key>
 ```
 
-**Incremental update** (recent days only):
-```powershell
-python -m etl.main --start 2025-12-01 --end 2025-12-12 --mode incremental
-```
+Note the absence of a `NEXT_PUBLIC_` prefix. Next.js inlines any `NEXT_PUBLIC_*`
+value referenced from client-bundled code, so the prefix is itself the hazard.
+All Supabase access happens in server components; `web/lib/supabase.ts` imports
+`server-only`, which turns an accidental client import into a build error rather
+than a silent credential leak.
 
-- Idempotent upserts ensure re-runs don't duplicate
-- All dates aligned to America/New_York timezone
-- Logs show counts per symbol, proxy, macro series, events
+The same variables must be set in the hosting provider's environment settings
+(Vercel: Project → Settings → Environment Variables). Remove the old
+`NEXT_PUBLIC_*` entries there.
 
-## Timezone Alignment
+Apply migrations in order through the Supabase SQL editor. DDL cannot be run
+with the anon key, so migrations are always a manual step.
 
-**CRITICAL**: All data is aligned to US equity market time (America/New_York):
-- Daily bars represent NYSE close (4:00 PM ET)
-- FRED observations available at EOD of observation date (ET)
-- Features at date t use ONLY data available by market close on t
-- Labels use future closes (shifted forward, no leakage)
-- Event flags indicate event occurs on date t (not outcome)
+---
 
-## Verify Row Counts
+## Commands
 
-```sql
--- Daily bars for SPY
-select count(*) from public.daily_bars db 
-join public.assets a on a.id = db.asset_id 
-where a.symbol='SPY';
+| Task | Command |
+|---|---|
+| Incremental data load | `python run_etl.py` |
+| Full backfill | `python run_etl.py --mode backfill --start 2001-01-01` |
+| Train one horizon | `python -m ml.src.train.train --horizon 20d` |
+| Train all horizons | `python -m ml.src.train.train --all` |
+| Today's predictions | `python -m ml.src.predict.predict --latest` |
+| Rebuild history | `python -m ml.src.predict.predict --backfill 2025-01-01` |
+| Resolve outcomes | `python -m ml.src.predict.predict --resolve` |
+| Run the site | `npm --prefix web run dev` |
 
--- Labels for SPY
-select count(*) from public.labels_daily l 
-join public.assets a on a.id = l.asset_id 
-where a.symbol='SPY';
+---
 
--- Events calendar
-select event_type, count(*) from public.events_calendar 
-group by event_type;
+## How the modelling works
 
--- Macro series coverage
-select ms.series_key, count(md.id) as obs_count
-from public.macro_series ms
-left join public.macro_daily md on md.series_id = ms.id
-group by ms.series_key;
-```
+**Target.** `y_class_<h>d ∈ {1, -1}`, from `log(close[t+h] / close[t])`. Labels are
+recomputed from the close series at dataset-build time rather than read back from
+`labels_daily`, so a new horizon needs no migration and labels can never go stale
+relative to prices.
 
-## Modeling Dataset Query
+**Splits.** Strictly chronological — train 2001–2023, validate 2024, test 2025
+onward. No random sampling, and the test window is never touched during
+selection or tuning.
 
-Fetch enhanced dataset with context features for SPY:
+**Stationarity.** Raw price levels (`sma_200`, `close`, proxy closes) are replaced
+with scale-free equivalents such as `px_vs_sma_200`. SPY traded near 130 in 2001
+and near 770 in 2026, so every test-period level sits outside the range the trees
+were fit on; a split on an absolute price sends the whole test set down one branch.
+See `ml/src/data/features.py`.
 
-```sql
-select 
-  symbol, date, 
-  open, high, low, close, adj_close, volume,
-  -- Technical features
-  (feature_json->>'rsi_14')::numeric as rsi_14,
-  (feature_json->>'macd_line')::numeric as macd_line,
-  (feature_json->>'vol_20')::numeric as vol_20,
-  (feature_json->>'sma_50')::numeric as sma_50,
-  -- Macro features
-  (feature_json->>'yield_curve_slope')::numeric as yield_curve_slope,
-  (feature_json->>'hy_oas_level')::numeric as hy_oas_level,
-  (feature_json->>'liquidity_expanding')::int as liquidity_expanding,
-  -- VIX features
-  (feature_json->>'vix_level')::numeric as vix_level,
-  (feature_json->>'vix_change_1d')::numeric as vix_change_1d,
-  -- Breadth features
-  (feature_json->>'rsp_spy_ratio_z')::numeric as rsp_spy_ratio_z,
-  (feature_json->>'qqq_spy_ratio_z')::numeric as qqq_spy_ratio_z,
-  -- Event flags
-  (feature_json->>'is_month_end')::int as is_month_end,
-  (feature_json->>'is_fomc')::int as is_fomc,
-  -- Labels
-  y_1d, y_5d, y_thresh
-from public.v_model_dataset_enhanced
-where symbol = 'SPY' 
-  and date between '2015-01-01' and '2020-12-31'
-order by date;
-```
+**Decision threshold.** Tuned on validation, not fixed at 0.5. `class_weight=
+"balanced"` deliberately shifts the boundary to weight the rarer DOWN class,
+which helps ranking but produces an implausibly bearish argmax on a series that
+rises in ~68% of 20-day windows. Ranking and thresholding are separate decisions.
 
-Alternative: use `v_model_dataset_enhanced` which includes event flags as boolean columns.
+**Displayed probabilities.** Stored `p_up` / `p_down` are re-centred so 0.5 is the
+decision boundary (`DirectionModel.predict_proba_display`). The raw probabilities
+are boundary-shifted by `class_weight="balanced"` — a 20D call can be UP at a raw
+`p_up` of 0.27 because the tuned threshold is 0.22 — and showing that verbatim
+would put an "UP" badge next to a bar reading "Down 73%". The map is monotone, so
+ROC AUC is unchanged; it sends the threshold to 0.5, so argmax agrees with the
+call. It is a presentation transform, not a second model.
 
-## Feature Categories
+**Selection.** By validation ROC AUC, not accuracy. Accuracy on this task is
+dominated by the base rate, so selecting on it just picks whichever model is most
+bullish. AUC measures whether predicted probabilities *rank* up-days above
+down-days, which is what the dashboard renders as a confidence bar.
 
-**Technical** (from OHLCV):
-- Returns: 1d, 5d, 10d, 20d log returns
-- Volatility: rolling std (5/10/20/60)
-- Moving averages: SMA/EMA (5/10/20/50/200)
-- Momentum: RSI(14), MACD
-- Range: ATR(14), true range, high-low %, close-open %
-- Volume: z-score, change %, OBV
-- Drawdown: 20d, 60d
+### Each horizon is its own problem
 
-**Macro** (FRED derived):
-- Yield curve slope (DGS10 - DGS2)
-- Rate changes (1d, 5d)
-- Credit spread level and changes
-- Liquidity regime (Fed balance sheet expanding/contracting)
-- RRP usage changes
+The three horizons are not the same task at three settings. They differ in base
+rate, in how much data they actually contain, and in where their labels reach.
+All three are handled per horizon:
 
-**Cross-Asset**:
-- VIX level, changes, term structure
-- Dollar (UUP) returns
-- Gold/Oil returns
-- Credit (HYG/LQD) returns and relative strength vs SPY
-- TLT bond returns
-- Rolling correlations to SPY
+**Base rate rises with horizon.** Up-rates are 0.54 (1D), 0.57 (5D), 0.62 (20D)
+over the full sample — drift compounds. Every threshold is chosen against *that
+horizon's own* base rate, and every accuracy figure is quoted beside it. A 20D
+model must clear a much higher bar than a 1D model to mean the same thing.
 
-**Breadth/Relative Strength**:
-- RSP/SPY ratio and z-score
-- QQQ/SPY ratio and z-score
-- IWM/SPY ratio and z-score
+**Row counts are not sample sizes.** Consecutive 20-day windows share 19 of their
+20 days, and SPY/QQQ/DIA/IWM are near-copies of each other. So:
 
-**Calendar**:
-- Day of week, month
-- Month/quarter end flags
-- Options expiry week
-- FOMC, CPI, NFP event flags
+| Horizon | Rows | Independent events | Overstated by |
+|---|---|---|---|
+| 1D | 25,824 | ~6,456 | 4× |
+| 5D | 25,808 | ~1,290 | 20× |
+| 20D | 25,748 | **~321** | **80×** |
 
-## Why We Pruned Features (v3)
+`effective_n()` computes this as distinct dates ÷ horizon, and every error bar —
+including the one-standard-error band in threshold tuning — is sized on it.
+Previously the band used the row count, so at 20D it was ~9× too tight and the
+threshold overfit noise.
 
-After initial development with 70+ features, we pruned to **60 high-signal features** to reduce multicollinearity and improve generalization. See [FEATURE_MANIFEST.md](FEATURE_MANIFEST.md) for complete list.
+**Labels reach across split boundaries.** A 20D label stamped 2023-12-15 is
+decided by the close on ~2024-01-16, inside the validation window. `purge_boundary()`
+drops the last `h` observations per symbol from each split: 4 rows at 1D, 20 at
+5D, 80 at 20D.
 
-### Dropped Features (11)
+**Validation is sized in events, not days.** One calendar year holds ~250
+independent 1D events but only ~12 non-overlapping 20D windows. Selecting among
+four models on twelve events is noise. The validation window therefore grows with
+the horizon (`horizon_splits()`), holding ~40 non-overlapping windows at each —
+800 sessions at 20D versus 252 at 1D.
 
-**Redundant Moving Averages (4)**
-- SMA 5/10, EMA 5/10/200: Redundant with 20/50/200
+### Honest performance
 
-**Redundant MACD (2)**
-- MACD line/signal: Histogram captures divergence sufficiently
+Out-of-sample (2025-01 onward), selected model per horizon:
 
-**Redundant Returns/Vol (2)**
-- log_ret_10d, vol_10d: Redundant with 5d/20d
+| Horizon | Balanced acc | Test AUC | Calls UP | Base rate | Independent test events |
+|---|---|---|---|---|---|
+| 1D | **0.532** | 0.529 | 53% | 55% | 419 |
+| 5D | 0.498 | 0.522 | 38% | 58% | 83 |
+| 20D | 0.451 | 0.469 | 40% | 68% | **20** |
 
-**Noisy Features (3)**
-- OBV: Noisy volume proxy (z-score more robust)
-- dd_20: Redundant with dd_60
-- month: Captured by macro/calendar features
+**Only the 1D model shows any consistent discrimination**, and it is marginal
+(0.532 balanced accuracy, validation 0.530 and test 0.529 agreeing). 5D is at
+chance. 20D is below chance on 20 independent test events, which is too few to
+conclude anything either way.
 
-### Dropped Event Types (3)
+An earlier version of this README reported 20D balanced accuracy of 0.551 and
+called it "modest but real skill". That was wrong. It came from the leaked split
+boundary plus a threshold tuned on eleven effective validation events. Purging the
+boundary and sizing the window in events removed it. The dashboard now refuses to
+render a verdict for any horizon with fewer than 30 independent events, which is
+why 20D reads "too few events" rather than a hit rate.
 
-- `options_expiry_week`: High frequency noise, low predictive power
-- `month_end`, `quarter_end`: Weak signal, redundant with calendar
+This is not a trading edge.
 
-**Kept events:** FOMC, CPI release, NFP release (~32 events/year vs ~250 before)
+#### The failure this replaced
 
-### Benefits
+An earlier version tuned the decision threshold to maximise plain accuracy. On an
+imbalanced binary target that objective is optimised by collapsing onto the
+majority class, and it did: the 1D model called UP on **99.4%** of days. Its
+reported accuracy matched the always-UP baseline because it *was* the always-UP
+baseline, and nothing in the report revealed it, because the report showed only
+accuracy.
 
-1. **Reduced collinearity**: Correlation matrix showed 0.9+ between dropped MA pairs
-2. **Faster training**: 15% fewer features → 30% faster training with ensemble models
-3. **Better OOS performance**: Test accuracy improved 2-3% after pruning
-4. **Cleaner interpretation**: Feature importance easier to interpret with less redundancy
+Guards now in place:
 
-### Migration
+- `tune_threshold` maximises balanced accuracy under a one-standard-error rule
+  sized on effective sample, breaking ties toward the horizon's own base rate.
+  When no threshold separates the classes at all, it says so and matches the base
+  rate rather than settling on a degenerate all-one-class rule.
+- Report and dashboard both show **Calls UP**, balanced accuracy, and independent
+  event counts; training logs a `DEGENERATE` warning above 90% one-class.
 
-Run `migrations/003_prune_features_and_events.sql` to:
-- Delete low-ROI event types from events_calendar
-- Create `v_features_pruned` view with only kept features
-- Update `v_model_dataset` to use pruned features
+## Feature hygiene
 
-## Notes
+`features_daily.feature_json` must never contain anything derived from the future.
+This was violated once and is worth understanding: an incremental ETL run reads
+history back out of `daily_bars` with `select("*")`, and after migration 015 added
+`outcome_price_1d` / `outcome_price_5d` to that table, those future closes rode
+along through `compute_features` and into the stored feature set. A model trained
+on that data scores near 100% and is worthless.
 
-- Labels computed with forward shift; last 5 rows dropped to prevent leakage
-- Macro series forward-filled conservatively (max 5-7 days gap)
-- All dates are ET trading dates using NYSE calendar
-- FOMC/CPI/NFP dates are examples; update with official calendars for production
-- Minimum training warm-up: 260 days (for SMA200 and long windows)
+Two guards now:
+
+- `SupabaseDB.BAR_COLUMNS` — history reads select OHLCV explicitly, never `*`.
+- `etl.transform_features_context.is_forbidden_feature` — a denylist applied both
+  when writing features and when building the training set, so historical rows
+  written before the fix are filtered on read.
+
+---
+
+## Security model
+
+The browser never receives a Supabase credential. Verified against a production
+build: no key, no JWT, and not even the project ref appears in `.next/static` or
+in the server-rendered HTML.
+
+Three layers:
+
+1. **Server-only access.** Every query runs in a server component. `web/lib/supabase.ts`
+   imports `server-only` and reads unprefixed env vars.
+2. **Read-only public role.** Migration 017 enables RLS on every table with a
+   `SELECT`-only policy for `anon` and `authenticated`. No write policy exists, so
+   inserts, updates and deletes are denied.
+3. **Privileged pipeline.** The ETL authenticates with `SUPABASE_SERVICE_KEY`,
+   which bypasses RLS. `SupabaseDB` prefers it and warns when falling back.
+
+**If you are applying this to a live project, order matters:**
+
+1. Add `SUPABASE_SERVICE_KEY` (GitHub Actions secret + local `.env`).
+2. Apply `migrations/017_lock_down_public_access.sql`.
+3. **Rotate the anon key.** The previous site shipped it in a client bundle, so it
+   must be treated as compromised. Update `web/.env.local` and the host's env vars.
+
+Doing 2 before 1 does not lose data, but the pipeline's writes start being rejected.
+
+## Known issues
+
+- Rows in `features_daily` written before the leakage fix still carry the extra
+  columns. They are filtered on read; a full feature rebuild would clear them.
+- `model_predictions_classification` is superseded by `predictions` and can be
+  dropped once nothing references it.
+
+Not investment advice.

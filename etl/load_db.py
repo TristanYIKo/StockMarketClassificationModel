@@ -3,6 +3,7 @@ import json
 import pandas as pd
 
 from .supabase_client import SupabaseDB
+from .transform_labels import HORIZONS
 
 
 def upsert_asset_metadata(db: SupabaseDB, asset_rows: List[tuple]):
@@ -58,61 +59,62 @@ def upsert_features_json(db: SupabaseDB, asset_id: str, features_df: pd.DataFram
         db.upsert_features_daily_json(rows)
 
 
+def _num(row, attr):
+    """Float value of `attr` on an itertuples row, or None if absent/NaN."""
+    val = getattr(row, attr, None)
+    return float(val) if val is not None and pd.notnull(val) else None
+
+
+def _int(row, attr):
+    """Int value of `attr` on an itertuples row, or None if absent/NaN."""
+    val = getattr(row, attr, None)
+    return int(val) if val is not None and pd.notnull(val) else None
+
+
 def upsert_labels(db: SupabaseDB, asset_id: str, labels_df: pd.DataFrame):
     """
-    Upsert classification labels.
-    
-    PRIMARY: y_class_1d (triple-barrier classification: -1, 0, 1)
-    Diagnostic columns kept for backwards compatibility but not used in modeling.
+    Upsert classification labels for every horizon in HORIZONS.
+
+    Primary targets are y_class_<h>d (binary: -1 DOWN, 1 UP). Diagnostic
+    regression columns are kept alongside them.
     """
     rows = []
     for r in labels_df.itertuples():
-        row = (
-            asset_id,
-            r.Index,  # date
-            # PRIMARY TARGETS (vol-scaled + clipped)
-            float(r.primary_target) if hasattr(r, 'primary_target') and pd.notnull(r.primary_target) else None,
-            float(r.y_1d_vol_clip) if hasattr(r, 'y_1d_vol_clip') and pd.notnull(r.y_1d_vol_clip) else None,
-            float(r.y_5d_vol_clip) if hasattr(r, 'y_5d_vol_clip') and pd.notnull(r.y_5d_vol_clip) else None,
-            # CLASSIFICATION TARGETS (triple-barrier)
-            int(r.y_class_1d) if hasattr(r, 'y_class_1d') and pd.notnull(r.y_class_1d) else None,
-            int(r.y_class_5d) if hasattr(r, 'y_class_5d') and pd.notnull(r.y_class_5d) else None,
-            # Diagnostic regression targets
-            float(r.y_1d_raw) if hasattr(r, 'y_1d_raw') and pd.notnull(r.y_1d_raw) else None,
-            float(r.y_5d_raw) if hasattr(r, 'y_5d_raw') and pd.notnull(r.y_5d_raw) else None,
-            float(r.y_1d_vol) if hasattr(r, 'y_1d_vol') and pd.notnull(r.y_1d_vol) else None,
-            float(r.y_5d_vol) if hasattr(r, 'y_5d_vol') and pd.notnull(r.y_5d_vol) else None,
-            float(r.y_1d_clipped) if hasattr(r, 'y_1d_clipped') and pd.notnull(r.y_1d_clipped) else None,
-            float(r.y_5d_clipped) if hasattr(r, 'y_5d_clipped') and pd.notnull(r.y_5d_clipped) else None,
-            # Binary classification targets (legacy)
-            int(r.y_1d) if pd.notnull(r.y_1d) else None,
-            int(r.y_5d) if pd.notnull(r.y_5d) else None,
-            int(r.y_thresh) if pd.notnull(r.y_thresh) else None,
-        )
+        row = {
+            "asset_id": asset_id,
+            "date": str(r.Index),
+            "primary_target": _num(r, "primary_target"),
+            "y_thresh": _int(r, "y_thresh"),
+        }
+        for h in HORIZONS:
+            row[f"y_class_{h}d"] = _int(r, f"y_class_{h}d")
+            row[f"y_{h}d_raw"] = _num(r, f"y_{h}d_raw")
+            row[f"y_{h}d_vol"] = _num(r, f"y_{h}d_vol")
+            row[f"y_{h}d_clipped"] = _num(r, f"y_{h}d_clipped")
+            row[f"y_{h}d_vol_clip"] = _num(r, f"y_{h}d_vol_clip")
+            if h in (1, 5):  # legacy 0/1 columns
+                row[f"y_{h}d"] = _int(r, f"y_{h}d")
         rows.append(row)
-    
+
     if rows:
         db.upsert_labels_daily(rows)
 
 
 def upsert_outcome_prices(db: SupabaseDB, asset_id: str, labels_df: pd.DataFrame):
     """
-    Upsert outcome prices (future close prices) to daily_bars.
-    This allows us to store predictions before the outcome is known.
+    Upsert outcome prices (future close prices) onto daily_bars.
+
+    These are written so a prediction can be stored before its outcome is known,
+    then resolved later once the future bar arrives. They are NOT features --
+    see etl.transform_features_context.is_forbidden_feature.
     """
     rows = []
     for r in labels_df.itertuples():
-        outcome_1d = float(r.outcome_price_1d) if hasattr(r, 'outcome_price_1d') and pd.notnull(r.outcome_price_1d) else None
-        outcome_5d = float(r.outcome_price_5d) if hasattr(r, 'outcome_price_5d') and pd.notnull(r.outcome_price_5d) else None
-        
-        row = (
-            asset_id,
-            r.Index,  # date
-            outcome_1d,
-            outcome_5d
-        )
+        row = {"asset_id": asset_id, "date": str(r.Index)}
+        for h in HORIZONS:
+            row[f"outcome_price_{h}d"] = _num(r, f"outcome_price_{h}d")
         rows.append(row)
-    
+
     if rows:
         db.upsert_outcome_prices(rows)
 

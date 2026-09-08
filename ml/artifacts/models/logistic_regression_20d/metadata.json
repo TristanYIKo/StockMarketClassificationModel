@@ -1,0 +1,282 @@
+{
+  "model_name": "logistic_regression_20d",
+  "algorithm": "logistic_regression",
+  "horizon": "20d",
+  "trained_at": "2026-09-08T00:06:00.471445+00:00",
+  "n_features": 97,
+  "threshold": 0.485,
+  "feature_names": [
+    "dow",
+    "DGS2",
+    "EFFR",
+    "dgs2",
+    "DGS10",
+    "WALCL",
+    "dd_60",
+    "dgs10",
+    "vol_5",
+    "T10YIE",
+    "adx_14",
+    "rsi_14",
+    "vol_20",
+    "vol_60",
+    "is_fomc",
+    "volume_z",
+    "macd_hist",
+    "vix_level",
+    "dxy_ret_1d",
+    "dxy_ret_5d",
+    "log_ret_1d",
+    "log_ret_5d",
+    "lqd_ret_1d",
+    "lqd_ret_5d",
+    "oil_ret_1d",
+    "oil_ret_5d",
+    "tlt_ret_1d",
+    "tlt_ret_5d",
+    "gold_ret_1d",
+    "gold_ret_5d",
+    "log_ret_20d",
+    "lqd_ret_20d",
+    "oil_ret_20d",
+    "tlt_ret_20d",
+    "BAMLH0A0HYM2",
+    "gold_ret_20d",
+    "high_low_pct",
+    "hy_oas_level",
+    "price_rsq_20",
+    "credit_stress",
+    "iwm_spy_ratio",
+    "qqq_spy_ratio",
+    "rsp_spy_ratio",
+    "vix_change_1d",
+    "vix_change_5d",
+    "close_open_pct",
+    "curve_inverted",
+    "dgs2_change_1d",
+    "dgs2_change_5d",
+    "is_cpi_release",
+    "is_nfp_release",
+    "sma20_gt_sma50",
+    "volume_chg_pct",
+    "days_since_prev",
+    "dgs10_change_1d",
+    "dgs10_change_5d",
+    "high_vol_regime",
+    "intraday_return",
+    "intraday_std_20",
+    "iwm_spy_ratio_z",
+    "log_ret_1d_lag1",
+    "log_ret_1d_lag2",
+    "log_ret_1d_lag3",
+    "log_ret_1d_lag5",
+    "overnight_share",
+    "qqq_spy_ratio_z",
+    "rsp_spy_ratio_z",
+    "hy_oas_change_1d",
+    "hy_oas_change_5d",
+    "intraday_mean_20",
+    "overnight_return",
+    "overnight_std_20",
+    "overnight_mean_20",
+    "rrp_change_pct_5d",
+    "vix_pct_change_1d",
+    "yield_curve_slope",
+    "iwm_spy_ratio_ma20",
+    "qqq_spy_ratio_ma20",
+    "return_autocorr_20",
+    "rsp_spy_ratio_ma20",
+    "vix_change_1d_lag1",
+    "vix_change_1d_lag3",
+    "liquidity_expanding",
+    "hy_oas_change_1d_lag1",
+    "yield_curve_slope_lag1",
+    "liquidity_expanding_regime",
+    "fed_balance_sheet_change_pct",
+    "px_vs_sma_20",
+    "px_vs_sma_50",
+    "px_vs_sma_200",
+    "px_vs_ema_20",
+    "px_vs_ema_50",
+    "px_vs_rolling_max_60",
+    "sma20_vs_sma50",
+    "sma50_vs_sma200",
+    "atr_14_pct",
+    "tr_pct"
+  ],
+  "config": {
+    "splits": {
+      "train_start": "2001-01-01",
+      "train_end": "2023-12-31",
+      "val_start": "2024-01-01",
+      "val_end": "2024-12-31",
+      "test_start": "2025-01-01",
+      "test_end": "2099-12-31"
+    },
+    "preprocessing": {
+      "missing_threshold": 0.3,
+      "imputation_strategy": "median",
+      "scale_features": false
+    },
+    "target": {
+      "class_mapping": {
+        "-1": 0,
+        "1": 1
+      },
+      "class_names": [
+        "Down",
+        "Up"
+      ]
+    },
+    "models": {
+      "logistic_regression": {
+        "enabled": true,
+        "scale": true,
+        "params": {
+          "max_iter": 2000,
+          "class_weight": "balanced",
+          "solver": "lbfgs",
+          "C": 0.1,
+          "random_state": 42
+        }
+      },
+      "random_forest": {
+        "enabled": true,
+        "params": {
+          "n_estimators": 400,
+          "max_depth": 8,
+          "min_samples_split": 100,
+          "min_samples_leaf": 50,
+          "max_features": "sqrt",
+          "class_weight": "balanced",
+          "n_jobs": -1,
+          "random_state": 42
+        }
+      },
+      "lightgbm": {
+        "enabled": true,
+        "params": {
+          "objective": "binary",
+          "boosting_type": "gbdt",
+          "num_leaves": 15,
+          "max_depth": 5,
+          "learning_rate": 0.02,
+          "n_estimators": 400,
+          "min_child_samples": 100,
+          "subsample": 0.8,
+          "subsample_freq": 1,
+          "colsample_bytree": 0.6,
+          "reg_alpha": 0.5,
+          "reg_lambda": 1.0,
+          "n_jobs": -1,
+          "random_state": 42,
+          "verbosity": -1
+        }
+      },
+      "xgboost": {
+        "enabled": true,
+        "params": {
+          "objective": "binary:logistic",
+          "eval_metric": "logloss",
+          "max_depth": 4,
+          "learning_rate": 0.02,
+          "n_estimators": 400,
+          "min_child_weight": 50,
+          "subsample": 0.8,
+          "colsample_bytree": 0.6,
+          "reg_alpha": 0.5,
+          "reg_lambda": 2.0,
+          "n_jobs": -1,
+          "random_state": 42,
+          "tree_method": "hist"
+        }
+      }
+    },
+    "selection": {
+      "metric": "roc_auc"
+    }
+  },
+  "metrics": {
+    "train": {
+      "split": "train",
+      "n": 20868,
+      "accuracy": 0.6407418056354227,
+      "balanced_accuracy": 0.6298736350511711,
+      "f1_macro": 0.625567193470842,
+      "roc_auc": 0.6815307483801138,
+      "log_loss": 0.6378354485303986,
+      "brier": 0.22410138146810302,
+      "up_rate_pred": 0.5759056929269695,
+      "threshold": 0.485,
+      "always_up": 0.6254073222158328,
+      "majority_class": 0.6254073222158328,
+      "majority_label": 1.0,
+      "eval_up_rate": 0.6254073222158328,
+      "edge_vs_majority": 0.015334483419589873,
+      "confusion_matrix": [
+        [
+          4585,
+          3232
+        ],
+        [
+          4265,
+          8786
+        ]
+      ]
+    },
+    "val": {
+      "split": "val",
+      "n": 3120,
+      "accuracy": 0.47147435897435896,
+      "balanced_accuracy": 0.4578854105637453,
+      "f1_macro": 0.4579401815400147,
+      "roc_auc": 0.4528602616032188,
+      "log_loss": 0.7714107842759399,
+      "brier": 0.2841000325109392,
+      "up_rate_pred": 0.576602564102564,
+      "threshold": 0.485,
+      "always_up": 0.5814102564102565,
+      "majority_class": 0.5814102564102565,
+      "majority_label": 1.0,
+      "eval_up_rate": 0.5814102564102565,
+      "edge_vs_majority": -0.10993589743589749,
+      "confusion_matrix": [
+        [
+          489,
+          817
+        ],
+        [
+          832,
+          982
+        ]
+      ]
+    },
+    "test": {
+      "split": "test",
+      "n": 1600,
+      "accuracy": 0.383125,
+      "balanced_accuracy": 0.5264491416817726,
+      "f1_macro": 0.3508049779840176,
+      "roc_auc": 0.4641299446206057,
+      "log_loss": 1.0639481792929315,
+      "brier": 0.3973015222516058,
+      "up_rate_pred": 0.10125,
+      "threshold": 0.485,
+      "always_up": 0.675625,
+      "majority_class": 0.675625,
+      "majority_label": 1.0,
+      "eval_up_rate": 0.675625,
+      "edge_vs_majority": -0.29250000000000004,
+      "confusion_matrix": [
+        [
+          485,
+          34
+        ],
+        [
+          953,
+          128
+        ]
+      ]
+    }
+  }
+}

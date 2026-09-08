@@ -1,0 +1,109 @@
+name: Daily pipeline
+
+# 22:10 UTC on weekdays. US equity markets close at 20:00/21:00 UTC depending on
+# DST, so this leaves an hour for the vendor feeds to settle. Cron here is always
+# UTC, which is why it is not written as a wall-clock ET time.
+on:
+  schedule:
+    - cron: '10 22 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'ETL start date (YYYY-MM-DD). Blank = auto-detect from DB.'
+        required: false
+        type: string
+      backfill_predictions_from:
+        description: 'Also rebuild predictions from this date (YYYY-MM-DD).'
+        required: false
+        type: string
+
+concurrency:
+  # Two overlapping runs would race on the same upserts.
+  group: daily-pipeline
+  cancel-in-progress: false
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      # Bypasses RLS. Required once migration 017 is applied, or every
+      # write below is silently rejected.
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+      PYTHONIOENCODING: utf-8
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check secrets are present
+        run: |
+          missing=0
+          for v in SUPABASE_URL SUPABASE_KEY FRED_API_KEY; do
+            if [ -z "${!v}" ]; then echo "::error::$v is not set"; missing=1; fi
+          done
+          [ "$missing" -eq 0 ]
+          if [ -z "$SUPABASE_SERVICE_KEY" ]; then
+            echo "::warning::SUPABASE_SERVICE_KEY is not set; falling back to the anon key.           Writes will fail once migration 017 (RLS) is applied."
+          fi
+
+      - name: Check schema is current
+        run: |
+          python - <<'PY'
+          from etl.supabase_client import SupabaseDB
+          db = SupabaseDB()
+          required = {
+              "daily_bars": {"outcome_price_20d"},
+              "labels_daily": {"y_class_20d"},
+              "predictions": {"as_of_date", "target_date"},
+          }
+          pending = []
+          for table, cols in required.items():
+              have = db.available_columns(table)
+              if not have:
+                  pending.append(f"{table}: table missing")
+              elif missing := cols - have:
+                  pending.append(f"{table}: missing {sorted(missing)}")
+          if pending:
+              print("::warning::Pending migration 016 -- " + "; ".join(pending))
+              print("Apply migrations/016_add_20d_horizon_and_predictions.sql in the Supabase SQL editor.")
+          else:
+              print("Schema is current.")
+          PY
+
+      - name: Run ETL
+        run: |
+          if [ -n "${{ inputs.start_date }}" ]; then
+            python run_etl.py --start "${{ inputs.start_date }}" --mode incremental
+          else
+            python run_etl.py --mode incremental
+          fi
+
+      - name: Generate predictions
+        run: python -m ml.src.predict.predict --latest
+
+      - name: Resolve matured predictions
+        # Fills outcome_close / actual_return / y_true for calls whose target
+        # session has now closed. Separate from generation because a 20d call
+        # resolves twenty sessions after it was made.
+        run: python -m ml.src.predict.predict --resolve
+
+      - name: Backfill predictions (manual runs only)
+        if: inputs.backfill_predictions_from != ''
+        run: python -m ml.src.predict.predict --backfill "${{ inputs.backfill_predictions_from }}"
+
+      - name: Data freshness report
+        if: always()
+        run: python check_db_dates.py || echo "freshness check unavailable"

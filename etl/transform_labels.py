@@ -1,124 +1,82 @@
 """
 Compute BINARY classification targets for UP/DOWN movement prediction.
 
-PRIMARY TARGET: y_class_1d
+TARGETS: y_class_1d, y_class_5d, y_class_20d
 - Binary classification: 1 (UP), -1 (DOWN)
-- Uses raw returns (positive = UP, negative = DOWN)
-- Simple, direct prediction of market direction
+- Uses raw forward returns (positive = UP, non-positive = DOWN)
 
 CRITICAL: All targets use FORWARD-SHIFTED data (no leakage).
-- future_1d = close.shift(-1) uses NEXT day's close
+- future_<h> = close.shift(-h) uses the close h trading days ahead.
+
+Rows near the end of the series have no future close yet; their labels and
+outcome prices stay NULL so today's row can still be written for inference.
 """
 
 import numpy as np
 import pandas as pd
 
+# Trading-day horizons the whole system is built around. Adding one here
+# propagates to labels, outcome prices, training and inference.
+HORIZONS = (1, 5, 20)
+
+
+def _binary_class(fwd_ret: pd.Series) -> pd.Series:
+    """1 where the forward return is positive, -1 where it is not, None where unknown."""
+    cls = pd.Series(-1, index=fwd_ret.index, dtype=object)
+    cls[fwd_ret > 0] = 1
+    return cls.where(fwd_ret.notna(), None)
+
 
 def compute_labels(
-    close: pd.Series, 
-    vol_20: pd.Series,  # 20-day realized volatility for scaling
+    close: pd.Series,
+    vol_20: pd.Series,          # 20-day realized volatility, for vol-scaling
     y_thresh: float = 0.002,
-    keep_incomplete: bool = True  # NEW: Keep rows without future data
+    keep_incomplete: bool = True,
 ) -> pd.DataFrame:
     """
-    Compute BINARY classification target: UP vs DOWN.
-    
-    PRIMARY TARGET: y_class_1d
-    - 1 (UP): future_1d > close (price went up)
-    - -1 (DOWN): future_1d <= close (price went down or flat)
-    
+    Compute binary UP/DOWN targets for every horizon in HORIZONS.
+
     Args:
         close: Close prices (chronological)
-        vol_20: 20-day rolling volatility (kept for diagnostic purposes)
-        y_thresh: Legacy parameter, kept for backwards compatibility
-        keep_incomplete: If True, keeps rows without future data (labels will be NULL)
-    
+        vol_20: 20-day rolling volatility used to scale returns
+        y_thresh: Threshold for the legacy y_thresh column
+        keep_incomplete: Keep trailing rows that have no future close yet
+                         (their labels are NULL rather than dropped)
+
     Returns:
-        DataFrame with y_class_1d, outcome prices, and supporting diagnostic columns
+        DataFrame indexed like `close` with outcome prices, classification
+        targets and diagnostic regression targets per horizon.
     """
-    # Forward-shifted closes (FUTURE data, no leakage)
-    future_1d = close.shift(-1)
-    future_5d = close.shift(-5)
-    
-    # Raw log returns (regression targets)
-    y_1d_raw = np.log(future_1d / close)
-    y_5d_raw = np.log(future_5d / close)
-    
-    # Volatility-scaled returns (heteroskedasticity adjustment)
-    # Divide by realized vol to stabilize variance across time
-    y_1d_vol = y_1d_raw / (vol_20 + 1e-9)  # avoid division by zero
-    y_5d_vol = y_5d_raw / (vol_20 + 1e-9)
-    
-    # Clipped returns (robustness to outliers)
-    # Clip to ±3 standard deviations of raw returns
-    std_1d = y_1d_raw.std()
-    std_5d = y_5d_raw.std()
-    y_1d_clipped = y_1d_raw.clip(-3 * std_1d, 3 * std_1d)
-    y_5d_clipped = y_5d_raw.clip(-3 * std_5d, 3 * std_5d)
-    
-    # PRIMARY TARGETS: Volatility-scaled AND clipped (best of both worlds)
-    # Clip vol-scaled returns to ±3σ for outlier robuskept for diagnostics)
-    # Clip vol-scaled returns to ±3σ for outlier robustness
-    y_1d_vol_clip = y_1d_vol.clip(-3.0, 3.0)
-    y_5d_vol_clip = y_5d_vol.clip(-3.0, 3.0)
-    
-    # Primary target alias (for default modeling)
-    primary_target = y_1d_vol_clip
-    
-    # BINARY CLASSIFICATION TARGET (v3.0 - UP/DOWN ONLY)
-    # Simple binary classification: did price go up or down?
-    # Two classes: 1 (UP), -1 (DOWN)
-    y_class_1d = pd.Series(-1, index=y_1d_raw.index, dtype=int)  # Default: DOWN
-    y_class_1d[y_1d_raw > 0] = 1   # Positive return → UP
-    y_class_1d[y_1d_raw <= 0] = -1  # Negative or zero return → DOWN
-    # NaN handling
-    y_class_1d = y_class_1d.where(y_1d_raw.notna(), None)  # NaN where input is NaN
-    
-    # 5-DAY BINARY CLASSIFICATION TARGET
-    # Same binary method but predicting 5 days ahead
-    y_class_5d = pd.Series(-1, index=y_5d_raw.index, dtype=int)  # Default: DOWN
-    y_class_5d[y_5d_raw > 0] = 1   # Positive return → UP
-    y_class_5d[y_5d_raw <= 0] = -1  # Negative or zero return → DOWN
-    y_class_5d = y_class_5d.where(y_5d_raw.notna(), None)  # NaN where input is NaN
-    
-    # Binary classification targets (legacy, for comparison)
-    y_1d_class = (future_1d > close).astype(int)
-    y_5d_class = (future_5d > close).astype(int)
-    ret_1d = (future_1d / close - 1.0)
-    y_thresh_class = (ret_1d > y_thresh).astype(int)
-    
-    labels = pd.DataFrame({
-        # OUTCOME PRICES (actual future prices for making predictions)
-        "outcome_price_1d": future_1d,
-        "outcome_price_5d": future_5d,
-        
-        # PRIMARY REGRESSION TARGETS (optimized)
-        "primary_target": primary_target,
-        "y_1d_vol_clip": y_1d_vol_clip,
-        "y_5d_vol_clip": y_5d_vol_clip,
-        
-        # TRIPLE-BARRIER CLASSIFICATION TARGETS
-        "y_class_1d": y_class_1d,  # 1-day (next day)
-        "y_class_5d": y_class_5d,  # 5-day (weekly)
-        
-        # Diagnostic targets
-        "y_1d_raw": y_1d_raw,
-        "y_5d_raw": y_5d_raw,
-        "y_1d_vol": y_1d_vol,
-        "y_5d_vol": y_5d_vol,
-        "y_1d_clipped": y_1d_clipped,
-        "y_5d_clipped": y_5d_clipped,
-        
-        # Binary classification targets (LEGACY)
-        "y_1d": y_1d_class,
-        "y_5d": y_5d_class,
-        "y_thresh": y_thresh_class,
-    })
-    
-    # NEW BEHAVIOR: Keep incomplete rows if requested
-    # This allows inserting today's data even if we don't have tomorrow's outcome yet
+    out = {}
+    vol = vol_20 + 1e-9  # avoid division by zero
+
+    for h in HORIZONS:
+        future = close.shift(-h)
+        raw = np.log(future / close)
+
+        out[f"outcome_price_{h}d"] = future
+        out[f"y_{h}d_raw"] = raw
+        out[f"y_{h}d_vol"] = raw / vol
+        out[f"y_{h}d_clipped"] = raw.clip(-3 * raw.std(), 3 * raw.std())
+        out[f"y_{h}d_vol_clip"] = (raw / vol).clip(-3.0, 3.0)
+        out[f"y_class_{h}d"] = _binary_class(raw)
+
+        # Legacy 0/1 columns kept so existing DB columns keep filling.
+        if h in (1, 5):
+            out[f"y_{h}d"] = (future > close).astype("Int64").where(future.notna(), None)
+
+    # Default regression target for anything that asks for just one.
+    out["primary_target"] = out["y_1d_vol_clip"]
+
+    # Legacy threshold-crossing target.
+    ret_1d = close.shift(-1) / close - 1.0
+    out["y_thresh"] = (ret_1d > y_thresh).astype("Int64").where(ret_1d.notna(), None)
+
+    labels = pd.DataFrame(out)
+
     if not keep_incomplete:
-        # Old behavior: Drop last 5 rows where future labels not available
-        labels = labels.iloc[:-5] if len(labels) >= 5 else labels.iloc[0:0]
-    
+        # Drop the tail whose longest-horizon future close is unknown.
+        drop = max(HORIZONS)
+        labels = labels.iloc[:-drop] if len(labels) > drop else labels.iloc[0:0]
+
     return labels

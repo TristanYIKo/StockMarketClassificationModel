@@ -1,27 +1,9 @@
-# ML Training Requirements
-# Install with: pip install -r ml/requirements.txt
+# Training-only extras. Install on top of the root requirements.txt:
+#     pip install -r requirements.txt -r ml/requirements.txt
+#
+# Kept in lockstep with the root pins -- see the note there about pickle
+# compatibility between the machine that trains and the machine that predicts.
 
-# Core ML
-scikit-learn==1.3.2
-lightgbm==4.1.0
+lightgbm==4.6.0
 xgboost==2.0.3
-numpy==1.26.0
-pandas==2.2.0
-
-# Data handling
-python-dotenv==1.0.0
-supabase==2.3.0
-pyarrow==14.0.1  # for parquet
-
-# Metrics & Visualization
-matplotlib==3.8.2
-seaborn==0.13.0
-plotly==5.18.0
-
-# Utils
-pyyaml==6.0.1
-joblib==1.3.2
-tqdm==4.66.1
-
-# Optional: Hyperparameter tuning
-optuna==3.5.0
+matplotlib==3.10.8

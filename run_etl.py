@@ -1,95 +1,82 @@
 #!/usr/bin/env python3
 """
-Run ETL pipeline - wrapper script for GitHub Actions.
-This ensures proper imports and paths work correctly.
+Run the ETL pipeline. Entry point for both local runs and GitHub Actions.
+
+    python run_etl.py                       # incremental, auto-detect start
+    python run_etl.py --start 2026-01-05    # explicit start
+    python run_etl.py --mode backfill --start 2001-01-01
+
+Deliberately does NOT generate predictions. It used to, which meant a bad model
+load could fail an otherwise healthy data run, and a fallback path quietly wrote
+placeholder "55% UP" rows into the same table real predictions live in. Loading
+data and scoring models are separate concerns and separate workflow steps:
+
+    python -m ml.src.predict.predict --latest
 """
-import sys
-import os
-
-# Add project root to Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-# Now import and run the ETL
-from etl.main import run_etl
-from datetime import date
 import argparse
+import sys
+from datetime import date, datetime
 
-def is_weekend(check_date):
-    """Check if the given date is a weekend (Saturday=5, Sunday=6)"""
-    from datetime import datetime
+
+def _force_utf8_stdout():
+    """
+    Windows consoles default to cp1252, which cannot encode the box-drawing and
+    emoji characters this pipeline logs; printing one raises UnicodeEncodeError
+    and kills the run before any data is written.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
+_force_utf8_stdout()
+
+from dotenv import load_dotenv  # noqa: E402
+
+load_dotenv()
+
+from etl.main import run_etl  # noqa: E402
+
+
+def is_weekend(check_date) -> bool:
     if isinstance(check_date, str):
         check_date = datetime.fromisoformat(check_date).date()
     return check_date.weekday() >= 5
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run ETL pipeline")
-    parser.add_argument("--start", type=str, required=False, 
-                       help="Start date (YYYY-MM-DD). If omitted, auto-detects from DB.")
-    parser.add_argument("--end", type=str, required=False, 
-                       help="End date (YYYY-MM-DD). If omitted, defaults to today.")
-    parser.add_argument("--mode", type=str, choices=["backfill", "incremental"], 
-                       default="incremental", help="ETL mode")
-    parser.add_argument("--force", action="store_true", 
-                       help="Force ETL to run even on weekends")
-    
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run the ETL pipeline")
+    parser.add_argument("--start", help="Start date (YYYY-MM-DD). Omit to auto-detect from the DB.")
+    parser.add_argument("--end", help="End date (YYYY-MM-DD). Defaults to today.")
+    parser.add_argument("--mode", choices=["backfill", "incremental"], default="incremental")
+    parser.add_argument("--force", action="store_true", help="Run even on a weekend")
     args = parser.parse_args()
-    
-    # Default end to today if not provided
-    end_date = args.end if args.end else date.today().isoformat()
-    
-    # Check if today is a weekend (for scheduled runs)
+
+    end_date = args.end or date.today().isoformat()
+
     if not args.force and not args.start and is_weekend(date.today()):
-        print("="*70)
-        print("  ETL Pipeline skipped - Weekend detected")
-        print("="*70)
-        print("Stock markets are closed on weekends (Saturday and Sunday).")
-        print("The ETL pipeline will run on the next trading day.")
-        print("To force execution, use: python run_etl.py --force")
-        print("="*70)
-        sys.exit(0)
-    
-    print("="*70)
-    print("ETL Pipeline - All Symbols (SPY, QQQ, IWM, DIA)")
-    print("="*70)
-    print(f"Mode: {args.mode}")
-    print(f"Start: {args.start if args.start else 'Auto-detect'}")
-    print(f"End: {end_date}")
-    print("="*70)
-    
+        print("Markets are closed at the weekend; nothing to load. Use --force to override.")
+        return 0
+
+    print("=" * 70)
+    print("ETL pipeline - SPY, QQQ, DIA, IWM")
+    print(f"  mode:  {args.mode}")
+    print(f"  start: {args.start or 'auto-detect'}")
+    print(f"  end:   {end_date}")
+    print("=" * 70)
+
     try:
         run_etl(args.start, end_date, args.mode)
-        print("\n" + "="*70)
-        print("ETL Pipeline completed successfully!")
-        print("="*70)
-        
-        # Automatically generate predictions for next trading day
-        print("\n" + "="*70)
-        print("Generating predictions for next trading day...")
-        print("="*70)
-        try:
-            # Try to use real model-based predictions first
-            import importlib.util
-            spec = importlib.util.spec_from_file_location("generate_real_predictions", "generate_real_predictions.py")
-            pred_module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(pred_module)
-            pred_module.main()
-        except FileNotFoundError:
-            # Fall back to placeholder predictions if models don't exist
-            print("  Trained models not found. Using placeholder predictions.")
-            print("   Train models with: python train_models_1d.py && python train_models_5d.py")
-            from quick_add_predictions_all_symbols import main as generate_predictions
-            generate_predictions()
-        except Exception as pred_error:
-            print(f"  Model prediction failed: {pred_error}")
-            print("   Falling back to placeholder predictions...")
-            try:
-                from quick_add_predictions_all_symbols import main as generate_predictions
-                generate_predictions()
-            except Exception as e2:
-                print(f"  Prediction generation failed: {e2}")
-                print("ETL completed successfully, but predictions were not generated.")
-    except Exception as e:
-        print("\n" + "="*70)
-        print(f" ETL Pipeline failed: {e}")
-        print("="*70)
-        sys.exit(1)
+    except Exception as exc:
+        print(f"\nETL pipeline FAILED: {exc}", file=sys.stderr)
+        return 1
+
+    print("\nETL pipeline completed successfully.")
+    print("Next: python -m ml.src.predict.predict --latest")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
