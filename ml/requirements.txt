@@ -1,9 +1,8 @@
 # Training-only extras. Install on top of the root requirements.txt:
 #     pip install -r requirements.txt -r ml/requirements.txt
 #
-# Kept in lockstep with the root pins -- see the note there about pickle
-# compatibility between the machine that trains and the machine that predicts.
+# The learners themselves live in the ROOT requirements, not here: model
+# selection is automatic, so any of them can become the production model and be
+# needed at inference time. Only genuinely train-time tooling belongs in here.
 
-lightgbm==4.6.0
-xgboost==2.0.3
 matplotlib==3.10.8
