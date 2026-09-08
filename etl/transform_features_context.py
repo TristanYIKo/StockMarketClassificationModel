@@ -84,6 +84,24 @@ def validate_no_leakage(features_df: pd.DataFrame, labels_df: pd.DataFrame) -> b
     return True
 
 
+# --- Feature hygiene -------------------------------------------------------
+# Anything derived from FUTURE data, or that is a database bookkeeping column,
+# must never reach feature_json. These leak in silently: an incremental ETL run
+# reads history back out of daily_bars, and any extra column on that table
+# (outcome_price_*, id, created_at, ...) rides along through compute_features.
+# A model trained on outcome_price_1d scores ~100% and is worthless.
+FORBIDDEN_FEATURE_PREFIXES = ("outcome_price", "y_class", "y_1d", "y_5d", "y_20d", "y_thresh")
+FORBIDDEN_FEATURE_NAMES = frozenset({
+    "id", "asset_id", "series_id", "created_at", "updated_at", "source",
+    "symbol", "date_temp", "primary_target",
+})
+
+
+def is_forbidden_feature(col: str) -> bool:
+    """True if `col` must be excluded from the modeling feature set."""
+    return col in FORBIDDEN_FEATURE_NAMES or col.startswith(FORBIDDEN_FEATURE_PREFIXES)
+
+
 def create_modeling_features_json(features_df: pd.DataFrame) -> pd.DataFrame:
     """
     Convert wide features DataFrame to (date, feature_json) format for storage.
@@ -92,7 +110,8 @@ def create_modeling_features_json(features_df: pd.DataFrame) -> pd.DataFrame:
     Handles inf/-inf/NaN values (converts to None for JSON compliance).
     """
     ohlcv_cols = ["date", "open", "high", "low", "close", "adj_close", "volume"]
-    feature_cols = [c for c in features_df.columns if c not in ohlcv_cols]
+    feature_cols = [c for c in features_df.columns
+                    if c not in ohlcv_cols and not is_forbidden_feature(c)]
     
     feature_records = []
     for _, row in features_df.iterrows():

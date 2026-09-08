@@ -1,31 +1,38 @@
 # Python
+# NOTE: these packaging/venv patterns are anchored with a leading "/" so they
+# match only at the repo root. Unanchored, `lib/` swallowed the whole of
+# web/lib/ (the site's entire data layer) and `data/` swallowed ml/src/data/,
+# so neither was ever committed and a fresh clone could not build or train.
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+/env/
+/venv/
+/ENV/
+.venv/
+/build/
+/develop-eggs/
+/dist/
+/downloads/
+/eggs/
+/.eggs/
+/lib/
+/lib64/
+/parts/
+/sdist/
+/var/
+/wheels/
 *.egg-info/
 .installed.cfg
 *.egg
 
-# Environment variables
+# Environment variables (never commit: these hold Supabase and FRED keys)
 .env
-.env.local
+.env.*
+!.env.example
+web/.env.local
 
 # IDEs
 .vscode/
@@ -41,12 +48,18 @@ Thumbs.db
 # Logs
 *.log
 
-# Data
-data/
+# Data exports and caches (regenerated from Supabase on demand)
+/data/
 *.csv
 *.parquet
 *.db
 *.sqlite
+ml/artifacts/cache/
+
+# Node / Next
+node_modules/
+.next/
+out/
 
 # Jupyter
 .ipynb_checkpoints/

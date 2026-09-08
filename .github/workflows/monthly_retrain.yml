@@ -1,0 +1,79 @@
+name: Monthly retrain
+
+# Retrains all three horizons on the full history and commits the refreshed
+# artifacts. Two jobs in one:
+#
+#   1. Models drift. Training data ends at the last ETL run, so a model that is
+#      never retrained slowly ages out of the regime it is predicting.
+#   2. GitHub disables scheduled workflows in repositories with no commit
+#      activity for 60 days. A scheduled run does NOT count as activity, but the
+#      commit this job pushes does -- so this is also what keeps the daily
+#      pipeline from silently switching itself off.
+on:
+  schedule:
+    - cron: '30 6 1 * *'   # 06:30 UTC on the 1st of each month
+  workflow_dispatch:
+    inputs:
+      backfill_from:
+        description: 'Rebuild stored predictions from this date after retraining.'
+        required: false
+        default: '2025-01-01'
+        type: string
+
+concurrency:
+  group: retrain
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      # Bypasses RLS. Required once migration 017 is applied, or every
+      # write below is silently rejected.
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+      PYTHONIOENCODING: utf-8
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r ml/requirements.txt
+
+      - name: Refresh data before training
+        run: python run_etl.py --mode incremental
+
+      - name: Train all horizons
+        run: python -m ml.src.train.train --all --no-cache
+
+      - name: Rebuild stored predictions with the new models
+        run: |
+          python -m ml.src.predict.predict --backfill "${{ inputs.backfill_from || '2025-01-01' }}"
+
+      - name: Show report
+        run: cat ml/artifacts/reports/model_report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit refreshed artifacts
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f ml/artifacts/models ml/artifacts/reports
+          if git diff --staged --quiet; then
+            echo "No artifact changes to commit."
+          else
+            git commit -m "chore: monthly retrain $(date -u +%Y-%m-%d)"
+            git push
+          fi

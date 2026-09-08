@@ -1,115 +1,11 @@
 {
   "model_name": "lightgbm_5d",
-  "timestamp": "2025-12-15T19:13:10.421787",
-  "config": {
-    "splits": {
-      "train_start": "2000-02-01",
-      "train_end": "2023-12-31",
-      "val_start": "2024-01-01",
-      "val_end": "2024-12-31",
-      "test_start": "2025-01-01",
-      "test_end": "2025-12-05"
-    },
-    "preprocessing": {
-      "missing_threshold": 0.3,
-      "imputation_strategy": "median",
-      "scale_features": false
-    },
-    "target": {
-      "class_mapping": {
-        "-1": 0,
-        "1": 1
-      },
-      "class_names": [
-        "Down",
-        "Up"
-      ]
-    },
-    "models": {
-      "logistic_regression": {
-        "enabled": true,
-        "params": {
-          "max_iter": 1000,
-          "class_weight": "balanced",
-          "solver": "lbfgs"
-        }
-      },
-      "random_forest": {
-        "enabled": true,
-        "params": {
-          "n_estimators": 100,
-          "max_depth": 10,
-          "min_samples_split": 50,
-          "min_samples_leaf": 20,
-          "class_weight": "balanced",
-          "n_jobs": -1,
-          "random_state": 42
-        }
-      },
-      "lightgbm": {
-        "enabled": true,
-        "params": {
-          "objective": "binary",
-          "num_class": 3,
-          "boosting_type": "gbdt",
-          "num_leaves": 31,
-          "max_depth": 8,
-          "learning_rate": 0.05,
-          "n_estimators": 200,
-          "min_child_samples": 50,
-          "subsample": 0.8,
-          "colsample_bytree": 0.8,
-          "reg_alpha": 0.1,
-          "reg_lambda": 0.1,
-          "n_jobs": -1,
-          "random_state": 42,
-          "verbose": -1
-        }
-      },
-      "xgboost": {
-        "enabled": true,
-        "params": {
-          "objective": "multi:softprob",
-          "num_class": 3,
-          "max_depth": 6,
-          "learning_rate": 0.05,
-          "n_estimators": 200,
-          "min_child_weight": 5,
-          "subsample": 0.8,
-          "colsample_bytree": 0.8,
-          "reg_alpha": 0.1,
-          "reg_lambda": 1.0,
-          "n_jobs": -1,
-          "random_state": 42,
-          "eval_metric": "mlogloss"
-        }
-      }
-    },
-    "metrics": {
-      "primary": "macro_f1",
-      "track": [
-        "accuracy",
-        "macro_f1",
-        "per_class_precision",
-        "per_class_recall",
-        "per_class_f1",
-        "confusion_matrix",
-        "action_accuracy"
-      ]
-    }
-  },
-  "metrics": {
-    "accuracy": 0.5138888888888888,
-    "f1_macro": 0.5043273013375295,
-    "f1_weighted": 0.5127961360258764,
-    "precision_macro": 0.5044770340254586,
-    "recall_macro": 0.5044369473802024,
-    "f1_class_-1": 0.43548387096774194,
-    "f1_class_1": 0.573170731707317
-  },
-  "n_features": 111,
+  "algorithm": "lightgbm",
+  "horizon": "5d",
+  "trained_at": "2026-09-08T00:05:58.500473+00:00",
+  "n_features": 103,
+  "threshold": 0.565,
   "feature_names": [
-    "tr",
     "dow",
     "DGS2",
     "EFFR",
@@ -121,28 +17,13 @@
     "vol_5",
     "T10YIE",
     "adx_14",
-    "atr_14",
-    "ema_20",
-    "ema_50",
     "rsi_14",
-    "sma_20",
-    "sma_50",
     "vol_20",
     "vol_60",
     "is_fomc",
-    "sma_200",
     "volume_z",
-    "GLD_close",
-    "HYG_close",
-    "LQD_close",
-    "RSP_close",
-    "SPY_close",
-    "TLT_close",
-    "USO_close",
-    "UUP_close",
     "macd_hist",
     "vix_level",
-    "^VIX_close",
     "dxy_ret_1d",
     "dxy_ret_5d",
     "hyg_ret_1d",
@@ -155,7 +36,6 @@
     "oil_ret_5d",
     "tlt_ret_1d",
     "tlt_ret_5d",
-    "^VVIX_close",
     "dxy_ret_20d",
     "gold_ret_1d",
     "gold_ret_5d",
@@ -182,7 +62,6 @@
     "dgs2_change_5d",
     "is_cpi_release",
     "is_nfp_release",
-    "rolling_max_60",
     "sma20_gt_sma50",
     "volume_chg_pct",
     "days_since_prev",
@@ -219,6 +98,191 @@
     "hy_oas_change_1d_lag1",
     "yield_curve_slope_lag1",
     "liquidity_expanding_regime",
-    "fed_balance_sheet_change_pct"
-  ]
+    "fed_balance_sheet_change_pct",
+    "px_vs_sma_20",
+    "px_vs_sma_50",
+    "px_vs_sma_200",
+    "px_vs_ema_20",
+    "px_vs_ema_50",
+    "px_vs_rolling_max_60",
+    "sma20_vs_sma50",
+    "sma50_vs_sma200",
+    "atr_14_pct",
+    "tr_pct"
+  ],
+  "config": {
+    "splits": {
+      "train_start": "2001-01-01",
+      "train_end": "2023-12-31",
+      "val_start": "2024-01-01",
+      "val_end": "2024-12-31",
+      "test_start": "2025-01-01",
+      "test_end": "2099-12-31"
+    },
+    "preprocessing": {
+      "missing_threshold": 0.3,
+      "imputation_strategy": "median",
+      "scale_features": false
+    },
+    "target": {
+      "class_mapping": {
+        "-1": 0,
+        "1": 1
+      },
+      "class_names": [
+        "Down",
+        "Up"
+      ]
+    },
+    "models": {
+      "logistic_regression": {
+        "enabled": true,
+        "scale": true,
+        "params": {
+          "max_iter": 2000,
+          "class_weight": "balanced",
+          "solver": "lbfgs",
+          "C": 0.1,
+          "random_state": 42
+        }
+      },
+      "random_forest": {
+        "enabled": true,
+        "params": {
+          "n_estimators": 400,
+          "max_depth": 8,
+          "min_samples_split": 100,
+          "min_samples_leaf": 50,
+          "max_features": "sqrt",
+          "class_weight": "balanced",
+          "n_jobs": -1,
+          "random_state": 42
+        }
+      },
+      "lightgbm": {
+        "enabled": true,
+        "params": {
+          "objective": "binary",
+          "boosting_type": "gbdt",
+          "num_leaves": 15,
+          "max_depth": 5,
+          "learning_rate": 0.02,
+          "n_estimators": 400,
+          "min_child_samples": 100,
+          "subsample": 0.8,
+          "subsample_freq": 1,
+          "colsample_bytree": 0.6,
+          "reg_alpha": 0.5,
+          "reg_lambda": 1.0,
+          "n_jobs": -1,
+          "random_state": 42,
+          "verbosity": -1
+        }
+      },
+      "xgboost": {
+        "enabled": true,
+        "params": {
+          "objective": "binary:logistic",
+          "eval_metric": "logloss",
+          "max_depth": 4,
+          "learning_rate": 0.02,
+          "n_estimators": 400,
+          "min_child_weight": 50,
+          "subsample": 0.8,
+          "colsample_bytree": 0.6,
+          "reg_alpha": 0.5,
+          "reg_lambda": 2.0,
+          "n_jobs": -1,
+          "random_state": 42,
+          "tree_method": "hist"
+        }
+      }
+    },
+    "selection": {
+      "metric": "roc_auc"
+    }
+  },
+  "metrics": {
+    "train": {
+      "split": "train",
+      "n": 23120,
+      "accuracy": 0.7291955017301038,
+      "balanced_accuracy": 0.7537815533286892,
+      "f1_macro": 0.7272129646677046,
+      "roc_auc": 0.8799960906591693,
+      "log_loss": 0.5557797732448448,
+      "brier": 0.18416370660354547,
+      "up_rate_pred": 0.3483996539792388,
+      "threshold": 0.565,
+      "always_up": 0.5663494809688582,
+      "majority_class": 0.5663494809688582,
+      "majority_label": 1.0,
+      "eval_up_rate": 0.5663494809688582,
+      "edge_vs_majority": 0.16284602076124566,
+      "confusion_matrix": [
+        [
+          9415,
+          611
+        ],
+        [
+          5650,
+          7444
+        ]
+      ]
+    },
+    "val": {
+      "split": "val",
+      "n": 988,
+      "accuracy": 0.5334008097165992,
+      "balanced_accuracy": 0.5136773829667232,
+      "f1_macro": 0.5136710220459711,
+      "roc_auc": 0.5028969902066349,
+      "log_loss": 0.6923742167236145,
+      "brier": 0.24905198649598925,
+      "up_rate_pred": 0.6002024291497976,
+      "threshold": 0.565,
+      "always_up": 0.6012145748987854,
+      "majority_class": 0.6012145748987854,
+      "majority_label": 1.0,
+      "eval_up_rate": 0.6012145748987854,
+      "edge_vs_majority": -0.06781376518218618,
+      "confusion_matrix": [
+        [
+          164,
+          230
+        ],
+        [
+          231,
+          363
+        ]
+      ]
+    },
+    "test": {
+      "split": "test",
+      "n": 1660,
+      "accuracy": 0.5481927710843374,
+      "balanced_accuracy": 0.5341151846178352,
+      "f1_macro": 0.5341712513694243,
+      "roc_auc": 0.5388387454055816,
+      "log_loss": 0.6926659158054876,
+      "brier": 0.24949499459598642,
+      "up_rate_pred": 0.594578313253012,
+      "threshold": 0.565,
+      "always_up": 0.5789156626506025,
+      "majority_class": 0.5789156626506025,
+      "majority_label": 1.0,
+      "eval_up_rate": 0.5789156626506025,
+      "edge_vs_majority": -0.030722891566265065,
+      "confusion_matrix": [
+        [
+          311,
+          388
+        ],
+        [
+          362,
+          599
+        ]
+      ]
+    }
+  }
 }

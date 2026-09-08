@@ -1,91 +1,96 @@
 # Model Training Configuration
+#
+# Task: BINARY direction classification. y_class_<h>d is 1 (UP) or -1 (DOWN).
+# Internally every model trains on 0 = DOWN, 1 = UP and predict_proba returns
+# columns in the order [p_down, p_up].
 
-# Data splits (time-based, no overlap)
+# Chronological splits. No random sampling, no overlap.
 splits:
-  train_start: "2000-02-01"
-  train_end: "2023-12-31"
-  val_start: "2024-01-01"
-  val_end: "2024-12-31"
-  test_start: "2025-01-01"
-  test_end: "2025-12-05"
+  train_start: "2001-01-01"
+  train_end:   "2023-12-31"
+  val_start:   "2024-01-01"
+  val_end:     "2024-12-31"
+  test_start:  "2025-01-01"
+  test_end:    "2099-12-31"   # open-ended: everything after val is out-of-sample
 
-# Preprocessing
 preprocessing:
-  missing_threshold: 0.30  # Drop features with >30% missing in train
-  imputation_strategy: "median"  # For non-tree models
-  scale_features: false  # Only for logreg
-  
-# Target mapping (internal: 0,1 for sklearn - BINARY CLASSIFICATION)
+  missing_threshold: 0.30     # drop features >30% missing in TRAIN
+  imputation_strategy: "median"
+  scale_features: false       # StandardScaler is applied per-model where needed
+
 target:
-  class_mapping:
-    -1: 0  # Down
-    1: 1   # Up
+  class_mapping:              # external label -> internal sklearn label
+    -1: 0                     # Down
+    1: 1                      # Up
   class_names: ["Down", "Up"]
 
-# Models to train
 models:
   logistic_regression:
     enabled: true
+    scale: true               # this one does need scaling
     params:
-      max_iter: 1000
+      max_iter: 2000
       class_weight: "balanced"
       solver: "lbfgs"
-      
+      C: 0.1
+      random_state: 42
+
   random_forest:
     enabled: true
     params:
-      n_estimators: 100
-      max_depth: 10
-      min_samples_split: 50
-      min_samples_leaf: 20
+      n_estimators: 400
+      max_depth: 8
+      min_samples_split: 100
+      min_samples_leaf: 50
+      max_features: "sqrt"
       class_weight: "balanced"
       n_jobs: -1
       random_state: 42
-      
+
   lightgbm:
     enabled: true
     params:
-      objective: "binary"
-      num_class: 3
+      objective: "binary"     # binary, NOT multiclass
       boosting_type: "gbdt"
-      num_leaves: 31
-      max_depth: 8
-      learning_rate: 0.05
-      n_estimators: 200
-      min_child_samples: 50
+      num_leaves: 15
+      max_depth: 5
+      learning_rate: 0.02
+      n_estimators: 400
+      min_child_samples: 100
       subsample: 0.8
-      colsample_bytree: 0.8
-      reg_alpha: 0.1
-      reg_lambda: 0.1
-      n_jobs: -1
-      random_state: 42
-      verbose: -1
-      
-  xgboost:
-    enabled: true
-    params:
-      objective: "multi:softprob"
-      num_class: 3
-      max_depth: 6
-      learning_rate: 0.05
-      n_estimators: 200
-      min_child_weight: 5
-      subsample: 0.8
-      colsample_bytree: 0.8
-      reg_alpha: 0.1
+      subsample_freq: 1
+      colsample_bytree: 0.6
+      reg_alpha: 0.5
       reg_lambda: 1.0
       n_jobs: -1
       random_state: 42
-      eval_metric: "mlogloss"
-      
-# Metrics to track
-metrics:
-  primary: "macro_f1"  # Primary metric for model selection
-  track:
-    - accuracy
-    - macro_f1
-    - per_class_precision
-    - per_class_recall
-    - per_class_f1
-    - confusion_matrix
-    - action_accuracy  # Accuracy on non-hold days only
+      verbosity: -1
+
+  xgboost:
+    enabled: true
+    params:
+      objective: "binary:logistic"   # binary, NOT multi:softprob
+      eval_metric: "logloss"
+      max_depth: 4
+      learning_rate: 0.02
+      n_estimators: 400
+      min_child_weight: 50
+      subsample: 0.8
+      colsample_bytree: 0.6
+      reg_alpha: 0.5
+      reg_lambda: 2.0
+      n_jobs: -1
+      random_state: 42
+      tree_method: "hist"
+
+# Model selection
+#
+# Selected on ROC AUC, not accuracy. Accuracy on a binary direction task is
+# dominated by the base rate: markets close up ~55% of days (~72% over 20 days),
+# so "always UP" scores well and argmax-accuracy selection just picks whichever
+# model is most bullish. AUC measures whether the predicted probabilities RANK
+# up-days above down-days, which is what the site actually renders as a
+# confidence bar. Accuracy and edge-vs-baseline are still reported for every
+# model so the honest comparison stays visible.
+selection:
+  metric: "roc_auc"           # chosen on VAL only, never on TEST

@@ -99,7 +99,7 @@ class TimeSeriesPreprocessor:
         logger.info("=" * 70)
         return self
     
-    def transform(self, X: pd.DataFrame, split_name: str = "") -> np.ndarray:
+    def transform(self, X: pd.DataFrame, split_name: str = "") -> pd.DataFrame:
         """
         Transform features using fitted preprocessing pipeline.
         
@@ -108,7 +108,7 @@ class TimeSeriesPreprocessor:
             split_name: Name for logging (e.g., 'train', 'val', 'test')
             
         Returns:
-            Transformed numpy array
+            DataFrame with the kept feature columns, in fitted order
         """
         if not self.fitted_:
             raise RuntimeError("Must call fit() before transform()")
@@ -127,12 +127,14 @@ class TimeSeriesPreprocessor:
         
         # Step 3: Scale
         if self.scaling:
-            X_scaled = self.scaler_.transform(X_imputed)
-            return X_scaled
-        else:
-            return X_imputed
+            X_imputed = self.scaler_.transform(X_imputed)
+
+        # Return a named DataFrame, not a bare array. Estimators then validate
+        # column names on every call, so a caller that assembles features in the
+        # wrong order gets an exception instead of a silently mis-aligned row.
+        return pd.DataFrame(X_imputed, columns=self.kept_features_, index=X.index)
     
-    def fit_transform(self, X_train: pd.DataFrame) -> np.ndarray:
+    def fit_transform(self, X_train: pd.DataFrame) -> pd.DataFrame:
         """
         Fit on training data and transform it.
         

@@ -1,81 +1,121 @@
 @import "tailwindcss";
 
-@theme {
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-
-  --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
-}
-
-/* 
-  DARK THEME DEFAULT 
-  Based on "Slate" or similar dark mode
+/*
+  Dark-only by design. This is a market dashboard: it is read in one visual
+  register, and a half-committed light mode would dilute the contrast the
+  numbers depend on. Colours are stated once, explicitly.
 */
-:root {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
 
-  --card: 222.2 84% 4.9%;
-  --card-foreground: 210 40% 98%;
+@theme {
+  /* Surfaces, furthest back to nearest front. */
+  --color-base: #07090d;
+  --color-surface: #101720;
+  --color-surface-2: #17202b;
+  --color-line: #26313f;
+  --color-line-soft: #1c2530;
 
-  --popover: 222.2 84% 4.9%;
-  --popover-foreground: 210 40% 98%;
+  /* Text. */
+  --color-ink: #e9eef5;
+  --color-ink-muted: #9aa9bf;
+  --color-ink-faint: #6b7a8c;
 
-  --primary: 210 40% 98%;
-  --primary-foreground: 222.2 47.4% 11.2%;
+  /* Direction semantics: every up/down signal in the app uses these. */
+  --color-up: #26d07c;
+  --color-up-soft: #0f3d29;
+  --color-down: #f65f6f;
+  --color-down-soft: #45161f;
+  --color-pending: #d4a13a;
 
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
+  --color-accent: #4c8dff;
 
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
 
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
-
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 212.7 26.8% 83.9%;
-
-  --radius: 0.5rem;
+  --radius-card: 12px;
 }
 
-/* Reset base borders */
 @layer base {
-  * {
-    @apply border-border;
+  html {
+    color-scheme: dark;
   }
 
   body {
-    @apply bg-background text-foreground;
+    background-color: var(--color-base);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Tabular figures wherever a number can change between renders, so columns
+     of prices and percentages do not jitter. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer components {
+  .card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+  }
+
+  /* Faint grid texture behind the hero so the page does not read as a flat
+     slab.
+
+     The texture and its fade live on a ::before layer, NOT on the element
+     itself. `mask-image` applies to an element's CONTENT as well as its
+     background, so masking the container directly faded out the header text
+     sitting inside it -- the heading and symbol switcher were nearly invisible.
+     Isolating the effect on a pseudo-element keeps the fade on the texture and
+     leaves the content at full opacity. */
+  .grid-veil {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .grid-veil::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      linear-gradient(to right, var(--color-line-soft) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--color-line-soft) 1px, transparent 1px);
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(ellipse 75% 90% at 50% 0%, #000 20%, transparent 78%);
+    mask-image: radial-gradient(ellipse 75% 90% at 50% 0%, #000 20%, transparent 78%);
+  }
+
+  /* Soft accent glow behind the hero, under the grid. */
+  .grid-veil::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background: radial-gradient(
+      ellipse 60% 100% at 50% -10%,
+      color-mix(in srgb, var(--color-accent) 13%, transparent),
+      transparent 70%
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

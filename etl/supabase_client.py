@@ -6,14 +6,30 @@ from supabase import create_client, Client
 class SupabaseDB:
     def __init__(self, url: Optional[str] = None, key: Optional[str] = None):
         self.url = url or os.getenv("SUPABASE_URL")
-        self.key = key or os.getenv("SUPABASE_KEY")
-        
+
+        # Prefer the service-role key. Once row-level security is enabled
+        # (migration 017), the anon key is SELECT-only by design, so a pipeline
+        # authenticating with it can read but silently writes nothing. The
+        # fallback keeps existing setups running until the secret is added.
+        self.key = key or os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
+        self.using_service_key = bool(
+            key is None and os.getenv("SUPABASE_SERVICE_KEY")
+        )
+
         if not self.url or not self.key:
-            raise ValueError("Missing Supabase URL or KEY. Set SUPABASE_URL and SUPABASE_KEY environment variables.")
+            raise ValueError(
+                "Missing Supabase credentials. Set SUPABASE_URL and either "
+                "SUPABASE_SERVICE_KEY (preferred, for writes) or SUPABASE_KEY."
+            )
+
+        if not self.using_service_key:
+            print("  Note: using the anon key for writes. Set SUPABASE_SERVICE_KEY "
+                  "before enabling RLS, or writes will start failing silently.")
         
         self.client: Client = create_client(self.url, self.key)
         self._asset_cache = None
         self._macro_cache = None
+        self._columns_cache = {}
 
     def close(self):
         pass  # Supabase client handles connection management
@@ -40,6 +56,74 @@ class SupabaseDB:
             self._asset_cache = {row["symbol"]: row["id"] for row in response.data}
         return self._asset_cache
 
+    # PostgREST / Postgres codes for "relation does not exist".
+    MISSING_TABLE_CODES = frozenset({"42P01", "PGRST205"})
+    # ... and for "column does not exist".
+    MISSING_COLUMN_CODES = frozenset({"42703", "PGRST204"})
+
+    def table_exists(self, table: str) -> bool:
+        """
+        Whether `table` exists, independent of whether it holds any rows.
+
+        Necessary because available_columns() reads a sample row and therefore
+        cannot tell an empty table from a missing one -- a freshly migrated
+        table looks identical to one that was never created.
+        """
+        try:
+            self.client.table(table).select("*").limit(1).execute()
+            return True
+        except Exception as exc:
+            if any(code in str(exc) for code in self.MISSING_TABLE_CODES):
+                return False
+            raise
+
+    def has_column(self, table: str, column: str) -> bool:
+        """
+        Whether `table` has `column`. Works on empty tables, since PostgREST
+        validates the projection before it looks at any rows.
+        """
+        try:
+            self.client.table(table).select(column).limit(1).execute()
+            return True
+        except Exception as exc:
+            text = str(exc)
+            if any(code in text for code in self.MISSING_COLUMN_CODES | self.MISSING_TABLE_CODES):
+                return False
+            raise
+
+    def available_columns(self, table: str) -> set:
+        """
+        Column names present on a sample row of `table`, cached per process.
+
+        Lets writers degrade gracefully when a migration has not been applied
+        yet: a payload key the table does not have would otherwise fail the
+        whole batch with PGRST204.
+
+        An empty result means "unknown" -- the table is missing OR simply has no
+        rows yet -- and callers treat that as "write everything and let the
+        database object". Use table_exists() / has_column() to ask about schema.
+        """
+        if table not in self._columns_cache:
+            try:
+                resp = self.client.table(table).select("*").limit(1).execute()
+                self._columns_cache[table] = set(resp.data[0].keys()) if resp.data else set()
+            except Exception as exc:
+                print(f"  Warning: could not introspect {table}: {exc}")
+                self._columns_cache[table] = set()
+        return self._columns_cache[table]
+
+    def _filter_to_columns(self, table: str, rows):
+        """Drop payload keys the table does not have, warning once per column."""
+        cols = self.available_columns(table)
+        if not cols:
+            return rows
+        unknown = {k for r in rows for k in r} - cols
+        if unknown:
+            print(f"  Note: {table} is missing {sorted(unknown)} - skipping those "
+                  f"(apply the pending migration to store them)")
+            return [{k: v for k, v in r.items() if k in cols} for r in rows]
+        return rows
+
     def upsert_daily_bars(self, rows):
         """Upsert daily bars. Batch process for performance."""
         data = [
@@ -63,21 +147,12 @@ class SupabaseDB:
 
     def upsert_outcome_prices(self, rows):
         """
-        Upsert outcome prices (future close prices) to daily_bars.
-        Rows format: (asset_id, date, outcome_price_1d, outcome_price_5d)
+        Upsert outcome prices (future close prices) onto daily_bars.
+        `rows` is a list of dicts already keyed by column name.
         """
-        data = [
-            {
-                "asset_id": row[0],
-                "date": str(row[1]),
-                "outcome_price_1d": row[2],
-                "outcome_price_5d": row[3]
-            }
-            for row in rows
-        ]
-        # Batch upsert in chunks of 1000
-        for i in range(0, len(data), 1000):
-            chunk = data[i:i+1000]
+        rows = self._filter_to_columns("daily_bars", rows)
+        for i in range(0, len(rows), 1000):
+            chunk = rows[i:i + 1000]
             self.client.table("daily_bars").upsert(chunk, on_conflict="asset_id,date").execute()
 
     def upsert_corporate_actions(self, rows):
@@ -144,40 +219,13 @@ class SupabaseDB:
 
     def upsert_labels_daily(self, rows):
         """
-        Upsert labels with regression and classification targets (v2.1 with triple-barrier).
-        
-        Row format: (asset_id, date, primary_target, y_1d_vol_clip, y_5d_vol_clip, y_class_1d, y_class_5d,
-                     y_1d_raw, y_5d_raw, y_1d_vol, y_5d_vol, 
-                     y_1d_clipped, y_5d_clipped, y_1d, y_5d, y_thresh)
+        Upsert label rows. `rows` is a list of dicts already keyed by column
+        name (see etl.load_db.upsert_labels), so adding a horizon needs no
+        change here.
         """
-        data = [
-            {
-                "asset_id": row[0],
-                "date": str(row[1]),
-                # PRIMARY regression targets (vol-scaled + clipped)
-                "primary_target": row[2],
-                "y_1d_vol_clip": row[3],
-                "y_5d_vol_clip": row[4],
-                # CLASSIFICATION targets (triple-barrier)
-                "y_class_1d": row[5],
-                "y_class_5d": row[6],
-                # Diagnostic regression targets
-                "y_1d_raw": row[7],
-                "y_5d_raw": row[8],
-                "y_1d_vol": row[9],
-                "y_5d_vol": row[10],
-                "y_1d_clipped": row[11],
-                "y_5d_clipped": row[12],
-                # Binary classification targets (legacy)
-                "y_1d": row[13],
-                "y_5d": row[14],
-                "y_thresh": row[15]
-            }
-            for row in rows
-        ]
-        # Batch upsert
-        for i in range(0, len(data), 1000):
-            chunk = data[i:i+1000]
+        rows = self._filter_to_columns("labels_daily", rows)
+        for i in range(0, len(rows), 1000):
+            chunk = rows[i:i + 1000]
             self.client.table("labels_daily").upsert(chunk, on_conflict="asset_id,date").execute()
 
     def get_latest_date(self) -> str:
@@ -197,11 +245,17 @@ class SupabaseDB:
             print(f"Error fetching latest date: {e}")
             return None
 
+    # Only OHLCV columns are safe to feed into feature computation.
+    # Selecting "*" pulls DB metadata (id, created_at, source) and -- critically --
+    # outcome_price_1d/5d/20d, which are FUTURE closes. Those flow through
+    # compute_features straight into feature_json and leak the target.
+    BAR_COLUMNS = "date, open, high, low, close, adj_close, volume"
+
     def fetch_daily_bars(self, asset_id: str, start_date: str) -> List[Dict]:
-        """Fetch daily bars for an asset from a specific start date."""
+        """Fetch daily OHLCV bars for an asset from a specific start date."""
         try:
             response = self.client.table("daily_bars") \
-                .select("*") \
+                .select(self.BAR_COLUMNS) \
                 .eq("asset_id", asset_id) \
                 .gte("date", start_date) \
                 .order("date", desc=False) \
@@ -215,7 +269,7 @@ class SupabaseDB:
         """Fetch macro data for a series from a specific start date."""
         try:
             response = self.client.table("macro_daily") \
-                .select("*") \
+                .select("date, value") \
                 .eq("series_id", series_id) \
                 .gte("date", start_date) \
                 .order("date", desc=False) \
