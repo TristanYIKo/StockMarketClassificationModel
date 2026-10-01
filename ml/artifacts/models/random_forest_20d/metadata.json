@@ -2,7 +2,7 @@
   "model_name": "random_forest_20d",
   "algorithm": "random_forest",
   "horizon": "20d",
-  "trained_at": "2026-09-08T00:06:03.010160+00:00",
+  "trained_at": "2026-10-01T13:46:25.676097+00:00",
   "n_features": 97,
   "threshold": 0.495,
   "feature_names": [
@@ -232,7 +232,7 @@
       "f1_macro": 0.4687671559852011,
       "roc_auc": 0.45231110420736453,
       "log_loss": 0.7109406947066715,
-      "brier": 0.2586498511062072,
+      "brier": 0.25864985110620714,
       "up_rate_pred": 0.596474358974359,
       "threshold": 0.495,
       "always_up": 0.5814102564102565,
@@ -253,27 +253,27 @@
     },
     "test": {
       "split": "test",
-      "n": 1600,
-      "accuracy": 0.335,
-      "balanced_accuracy": 0.4968442479043346,
-      "f1_macro": 0.27564721159917555,
-      "roc_auc": 0.46741492124433415,
-      "log_loss": 0.7793315716517074,
-      "brier": 0.29223354072753316,
-      "up_rate_pred": 0.038125,
+      "n": 1664,
+      "accuracy": 0.3515625,
+      "balanced_accuracy": 0.49842577361982116,
+      "f1_macro": 0.28520487115656323,
+      "roc_auc": 0.48190924745553615,
+      "log_loss": 0.7720435831501541,
+      "brier": 0.2886560035843381,
+      "up_rate_pred": 0.03665865384615385,
       "threshold": 0.495,
-      "always_up": 0.675625,
-      "majority_class": 0.675625,
+      "always_up": 0.6586538461538461,
+      "majority_class": 0.6586538461538461,
       "majority_label": 1.0,
-      "eval_up_rate": 0.675625,
-      "edge_vs_majority": -0.340625,
+      "eval_up_rate": 0.6586538461538461,
+      "edge_vs_majority": -0.30709134615384615,
       "confusion_matrix": [
         [
-          497,
+          546,
           22
         ],
         [
-          1042,
+          1057,
           39
         ]
       ]

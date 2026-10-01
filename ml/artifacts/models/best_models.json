@@ -2,34 +2,34 @@
   "1d": {
     "model_name": "logistic_regression",
     "artifact_dir": "logistic_regression_1d",
-    "selected_at": "2026-09-08T00:05:54.312656+00:00",
+    "selected_at": "2026-10-01T13:46:02.253021+00:00",
     "val_accuracy": 0.5318725099601593,
     "val_edge_vs_majority": -0.030876494023904466,
-    "test_accuracy": 0.5346062052505967,
-    "test_edge_vs_majority": -0.01670644391408116,
-    "test_roc_auc": 0.5288768191028829,
+    "test_accuracy": 0.5300230946882217,
+    "test_edge_vs_majority": -0.01385681293302543,
+    "test_roc_auc": 0.5174581418474025,
     "threshold": 0.5
   },
   "5d": {
     "model_name": "logistic_regression",
     "artifact_dir": "logistic_regression_5d",
-    "selected_at": "2026-09-08T00:05:59.747231+00:00",
+    "selected_at": "2026-10-01T13:46:16.197221+00:00",
     "val_accuracy": 0.5506072874493927,
     "val_edge_vs_majority": -0.05060728744939269,
-    "test_accuracy": 0.4789156626506024,
-    "test_edge_vs_majority": -0.10000000000000003,
-    "test_roc_auc": 0.5215909750662088,
+    "test_accuracy": 0.47674418604651164,
+    "test_edge_vs_majority": -0.09302325581395349,
+    "test_roc_auc": 0.5131867071152786,
     "threshold": 0.475
   },
   "20d": {
     "model_name": "xgboost",
     "artifact_dir": "xgboost_20d",
-    "selected_at": "2026-09-08T00:06:05.168897+00:00",
-    "val_accuracy": 0.5298076923076923,
-    "val_edge_vs_majority": -0.05160256410256414,
-    "test_accuracy": 0.421875,
-    "test_edge_vs_majority": -0.25375000000000003,
-    "test_roc_auc": 0.46911177297834905,
+    "selected_at": "2026-10-01T13:46:28.647491+00:00",
+    "val_accuracy": 0.5009615384615385,
+    "val_edge_vs_majority": -0.080448717948718,
+    "test_accuracy": 0.44350961538461536,
+    "test_edge_vs_majority": -0.21514423076923078,
+    "test_roc_auc": 0.48441033977588155,
     "threshold": 0.495
   }
 }
