@@ -1,6 +1,6 @@
 # Multi-Horizon Direction Model Report
 
-Generated: 2026-10-01 13:46 UTC
+Generated: 2026-11-01 13:43 UTC
 
 Binary UP/DOWN classification.
 
@@ -18,39 +18,39 @@ hundred independent events. Every error bar is sized on the effective count.
 
 ## 1D horizon
 
-Independent events (overlapping windows and four correlated ETFs collapsed): **train 5784, val 251, test 433**. Validation spans 252 sessions to hold a comparable number of events at this horizon.
+Independent events (overlapping windows and four correlated ETFs collapsed): **train 5784, val 251, test 449**. Validation spans 252 sessions to hold a comparable number of events at this horizon.
 
 | Model | Thresh | Test acc | vs baseline | Test bal-acc | Calls UP | Test AUC |
 |---|---|---|---|---|---|---|
-| logistic_regression **(selected)** | 0.500 | 0.5300 | -0.0139 | 0.5262 | 54.6% | 0.5175 |
-| random_forest | 0.510 | 0.4890 | -0.0548 | 0.4827 | 57.1% | 0.4989 |
-| lightgbm | 0.515 | 0.4977 | -0.0462 | 0.4936 | 54.6% | 0.5007 |
-| xgboost | 0.505 | 0.4758 | -0.0681 | 0.4781 | 47.1% | 0.4776 |
+| logistic_regression **(selected)** | 0.500 | 0.5284 | -0.0134 | 0.5234 | 56.2% | 0.5116 |
+| random_forest | 0.510 | 0.4894 | -0.0523 | 0.4845 | 55.8% | 0.4987 |
+| lightgbm | 0.515 | 0.4994 | -0.0423 | 0.4952 | 55.0% | 0.5017 |
+| xgboost | 0.505 | 0.4783 | -0.0635 | 0.4803 | 47.4% | 0.4792 |
 
-Test baseline (majority class): 0.5439 on 1732 rows; actual up-rate 0.5439.
+Test baseline (majority class): 0.5418 on 1796 rows; actual up-rate 0.5418.
 
 ## 5D horizon
 
-Independent events (overlapping windows and four correlated ETFs collapsed): **train 1156, val 49, test 86**. Validation spans 252 sessions to hold a comparable number of events at this horizon.
+Independent events (overlapping windows and four correlated ETFs collapsed): **train 1156, val 49, test 89**. Validation spans 252 sessions to hold a comparable number of events at this horizon.
 
 | Model | Thresh | Test acc | vs baseline | Test bal-acc | Calls UP | Test AUC |
 |---|---|---|---|---|---|---|
-| logistic_regression **(selected)** | 0.475 | 0.4767 | -0.0930 | 0.4920 | 39.0% | 0.5132 |
-| random_forest | 0.530 | 0.5017 | -0.0680 | 0.5264 | 32.7% | 0.5255 |
-| lightgbm | 0.565 | 0.5535 | -0.0163 | 0.5436 | 57.7% | 0.5470 |
-| xgboost | 0.525 | 0.5401 | -0.0297 | 0.5137 | 69.1% | 0.5358 |
+| logistic_regression **(selected)** | 0.475 | 0.4799 | -0.0893 | 0.4916 | 41.4% | 0.5109 |
+| random_forest | 0.530 | 0.4989 | -0.0703 | 0.5242 | 32.0% | 0.5265 |
+| lightgbm | 0.565 | 0.5513 | -0.0179 | 0.5426 | 56.9% | 0.5440 |
+| xgboost | 0.525 | 0.5379 | -0.0312 | 0.5140 | 67.5% | 0.5343 |
 
-Test baseline (majority class): 0.5698 on 1720 rows; actual up-rate 0.5698.
+Test baseline (majority class): 0.5692 on 1792 rows; actual up-rate 0.5692.
 
 ## 20D horizon
 
-Independent events (overlapping windows and four correlated ETFs collapsed): **train 260, val 39, test 20**. Validation spans 800 sessions to hold a comparable number of events at this horizon.
+Independent events (overlapping windows and four correlated ETFs collapsed): **train 260, val 39, test 21**. Validation spans 800 sessions to hold a comparable number of events at this horizon.
 
 | Model | Thresh | Test acc | vs baseline | Test bal-acc | Calls UP | Test AUC |
 |---|---|---|---|---|---|---|
-| logistic_regression | 0.485 | 0.3978 | -0.2608 | 0.5285 | 9.7% ⚠ | 0.4837 |
-| random_forest | 0.495 | 0.3516 | -0.3071 | 0.4984 | 3.7% ⚠ | 0.4819 |
-| lightgbm | 0.245 | 0.5781 | -0.0805 | 0.4766 | 81.2% | 0.4415 |
-| xgboost **(selected)** | 0.495 | 0.4435 | -0.2151 | 0.4762 | 38.9% | 0.4844 |
+| logistic_regression | 0.485 | 0.4036 | -0.2494 | 0.5192 | 12.8% | 0.4756 |
+| random_forest | 0.495 | 0.3568 | -0.2962 | 0.4989 | 3.5% ⚠ | 0.4893 |
+| lightgbm | 0.245 | 0.5756 | -0.0774 | 0.4755 | 82.0% | 0.4391 |
+| xgboost **(selected)** | 0.495 | 0.4440 | -0.2090 | 0.4768 | 38.6% | 0.4870 |
 
-Test baseline (majority class): 0.6587 on 1664 rows; actual up-rate 0.6587.
+Test baseline (majority class): 0.6530 on 1732 rows; actual up-rate 0.6530.

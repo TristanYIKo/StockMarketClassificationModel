@@ -2,7 +2,7 @@
   "model_name": "random_forest_20d",
   "algorithm": "random_forest",
   "horizon": "20d",
-  "trained_at": "2026-10-01T13:46:25.676097+00:00",
+  "trained_at": "2026-11-01T13:42:57.015492+00:00",
   "n_features": 97,
   "threshold": 0.495,
   "feature_names": [
@@ -253,27 +253,27 @@
     },
     "test": {
       "split": "test",
-      "n": 1664,
-      "accuracy": 0.3515625,
-      "balanced_accuracy": 0.49842577361982116,
-      "f1_macro": 0.28520487115656323,
-      "roc_auc": 0.48190924745553615,
-      "log_loss": 0.7720435831501541,
-      "brier": 0.2886560035843381,
-      "up_rate_pred": 0.03665865384615385,
+      "n": 1732,
+      "accuracy": 0.3568129330254042,
+      "balanced_accuracy": 0.49893855069137644,
+      "f1_macro": 0.28755967010114375,
+      "roc_auc": 0.48927443356268874,
+      "log_loss": 0.7709321622537074,
+      "brier": 0.28809138342033136,
+      "up_rate_pred": 0.03521939953810624,
       "threshold": 0.495,
-      "always_up": 0.6586538461538461,
-      "majority_class": 0.6586538461538461,
+      "always_up": 0.6530023094688222,
+      "majority_class": 0.6530023094688222,
       "majority_label": 1.0,
-      "eval_up_rate": 0.6586538461538461,
-      "edge_vs_majority": -0.30709134615384615,
+      "eval_up_rate": 0.6530023094688222,
+      "edge_vs_majority": -0.29618937644341803,
       "confusion_matrix": [
         [
-          546,
+          579,
           22
         ],
         [
-          1057,
+          1092,
           39
         ]
       ]

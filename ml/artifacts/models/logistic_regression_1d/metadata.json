@@ -2,7 +2,7 @@
   "model_name": "logistic_regression_1d",
   "algorithm": "logistic_regression",
   "horizon": "1d",
-  "trained_at": "2026-10-01T13:45:49.174381+00:00",
+  "trained_at": "2026-11-01T13:42:12.367577+00:00",
   "n_features": 103,
   "threshold": 0.5,
   "feature_names": [
@@ -259,28 +259,28 @@
     },
     "test": {
       "split": "test",
-      "n": 1732,
-      "accuracy": 0.5300230946882217,
-      "balanced_accuracy": 0.5261710876400871,
-      "f1_macro": 0.5261792351372279,
-      "roc_auc": 0.5174581418474025,
-      "log_loss": 0.6956336606352097,
-      "brier": 0.2511498327771372,
-      "up_rate_pred": 0.546189376443418,
+      "n": 1796,
+      "accuracy": 0.5283964365256125,
+      "balanced_accuracy": 0.5233510119521116,
+      "f1_macro": 0.5232277340614615,
+      "roc_auc": 0.5115543739283872,
+      "log_loss": 0.69863373647139,
+      "brier": 0.2525290428812479,
+      "up_rate_pred": 0.5623608017817372,
       "threshold": 0.5,
-      "always_up": 0.5438799076212472,
-      "majority_class": 0.5438799076212472,
+      "always_up": 0.5417594654788419,
+      "majority_class": 0.5417594654788419,
       "majority_label": 1.0,
-      "eval_up_rate": 0.5438799076212472,
-      "edge_vs_majority": -0.01385681293302543,
+      "eval_up_rate": 0.5417594654788419,
+      "edge_vs_majority": -0.013363028953229383,
       "confusion_matrix": [
         [
           381,
-          409
+          442
         ],
         [
           405,
-          537
+          568
         ]
       ]
     }

@@ -2,7 +2,7 @@
   "model_name": "xgboost_1d",
   "algorithm": "xgboost",
   "horizon": "1d",
-  "trained_at": "2026-10-01T13:46:02.252183+00:00",
+  "trained_at": "2026-11-01T13:42:28.593160+00:00",
   "n_features": 103,
   "threshold": 0.505,
   "feature_names": [
@@ -259,28 +259,28 @@
     },
     "test": {
       "split": "test",
-      "n": 1732,
-      "accuracy": 0.47575057736720555,
-      "balanced_accuracy": 0.47811550968851624,
-      "f1_macro": 0.4756324129386079,
-      "roc_auc": 0.4775941304523099,
-      "log_loss": 0.7012639689262455,
-      "brier": 0.2540268003940582,
-      "up_rate_pred": 0.47113163972286376,
+      "n": 1796,
+      "accuracy": 0.4782850779510022,
+      "balanced_accuracy": 0.4802866958299356,
+      "f1_macro": 0.478149018148553,
+      "roc_auc": 0.4791784000329679,
+      "log_loss": 0.7009424095031154,
+      "brier": 0.2538664937019348,
+      "up_rate_pred": 0.47438752783964366,
       "threshold": 0.505,
-      "always_up": 0.5438799076212472,
-      "majority_class": 0.5438799076212472,
+      "always_up": 0.5417594654788419,
+      "majority_class": 0.5417594654788419,
       "majority_label": 1.0,
-      "eval_up_rate": 0.5438799076212472,
-      "edge_vs_majority": -0.06812933025404161,
+      "eval_up_rate": 0.5417594654788419,
+      "edge_vs_majority": -0.06347438752783968,
       "confusion_matrix": [
         [
-          399,
-          391
+          415,
+          408
         ],
         [
-          517,
-          425
+          529,
+          444
         ]
       ]
     }
