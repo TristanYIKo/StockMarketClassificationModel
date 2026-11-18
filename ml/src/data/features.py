@@ -44,15 +44,53 @@ _PROXY_CLOSES = [
 ]
 
 
+# FRED values that the ETL stamps with their OBSERVATION date and uses unlagged.
+# None of them is published by the time a day's call is made:
+#   DGS2 / DGS10 / T10YIE  -- H.15, posted on FRED the next business day
+#   EFFR / SOFR            -- next business morning
+#   BAMLH0A0HYM2 (HY OAS)  -- next business day
+#   WALCL                  -- Wednesday's level, released Thursday 4:30pm ET
+# plus every column derived from them at the same date. In the historical
+# backfill each row holds the same-day value, which the live job cannot have
+# had; rows the incremental ETL wrote hold the previous day's value instead,
+# because the new observation was not out yet. Lagging one session makes every
+# row use only what was published by that day's close. (Columns the ETL already
+# builds from `.shift(1)` -- the *_change_* and *_lag1 columns, liquidity_* and
+# fed_balance_sheet_change_pct -- are already safe and are not shifted again.)
+_FRED_SAME_DAY = [
+    "DGS2", "DGS10", "EFFR", "T10YIE", "BAMLH0A0HYM2", "WALCL", "SOFR",
+    "RRPONTSYD", "FEDFUNDS",
+    "dgs2", "dgs10", "hy_oas_level", "rrp_level", "yield_curve_slope",
+    "curve_inverted", "credit_stress",
+]
+
+
+def apply_publication_lag(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+    """Shift same-day FRED columns back one session per symbol. See _FRED_SAME_DAY."""
+    out = df.copy()
+    cols = [c for c in _FRED_SAME_DAY if c in out.columns]
+    if not cols:
+        return out, []
+    ordered = out.sort_values(["symbol", "date"])
+    out[cols] = ordered.groupby("symbol", sort=False)[cols].shift(1)
+    return out, cols
+
+
 def to_stationary_features(df: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
     """
     Replace non-stationary level columns with scale-free equivalents.
+
+    Also applies the FRED publication lag first, since this is the one
+    transform both training and inference run on the dataset.
 
     Returns the transformed frame and the list of engineered column names.
     `close` itself is consumed as a denominator and then dropped from features
     (it stays available to the caller under `close` for reporting).
     """
-    out = df.copy()
+    out, lagged = apply_publication_lag(df)
+    if lagged:
+        logger.info("Publication lag: shifted %d same-day FRED columns back one session",
+                    len(lagged))
     created: List[str] = []
 
     if "close" not in out.columns:

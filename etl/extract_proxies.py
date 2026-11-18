@@ -79,8 +79,10 @@ def download_proxy_ohlcv(symbol: str, start: str, end: str) -> pd.DataFrame:
     # Ensure dates are ET trading days
     df.index = pd.to_datetime(df.index).tz_localize(ET_TZ).date
     df = df.reset_index().rename(columns={"index": "date"})
-    
-    return df[["date", "open", "high", "low", "close", "adj_close", "volume"]]
+
+    # Same guard as the ETFs: a close-less bar stored once is never re-fetched.
+    from etl.extract_yf import drop_incomplete_bars
+    return drop_incomplete_bars(df[["date", "open", "high", "low", "close", "adj_close", "volume"]], symbol)
 
 
 def compute_proxy_features(proxy_dict: dict, base_symbols: list = ["SPY"]) -> pd.DataFrame:

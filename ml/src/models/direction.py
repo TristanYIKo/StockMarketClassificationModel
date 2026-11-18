@@ -62,14 +62,16 @@ class DirectionModel:
         threshold to 0.5, argmax on the result agrees with predict() by
         construction. It is a presentation transform, not a second model.
         """
-        p_up = self.predict_proba(X)[:, 1]
-        t = float(self.threshold)
-        t = min(max(t, 1e-6), 1 - 1e-6)
-
-        shown = np.where(
-            p_up <= t,
-            0.5 * (p_up / t),
-            0.5 + 0.5 * (p_up - t) / (1.0 - t),
-        )
-        shown = np.clip(shown, 1e-6, 1 - 1e-6)
+        shown = display_p_up(self.predict_proba(X)[:, 1], self.threshold)
         return np.column_stack([1.0 - shown, shown])
+
+
+def display_p_up(p_up, threshold: float) -> np.ndarray:
+    """
+    The presentation map behind DirectionModel.predict_proba_display, usable on
+    stored raw probabilities without the model object. Monotone, threshold -> 0.5.
+    """
+    p_up = np.asarray(p_up, dtype=float)
+    t = min(max(float(threshold), 1e-6), 1 - 1e-6)
+    shown = np.where(p_up <= t, 0.5 * (p_up / t), 0.5 + 0.5 * (p_up - t) / (1.0 - t))
+    return np.clip(shown, 1e-6, 1 - 1e-6)

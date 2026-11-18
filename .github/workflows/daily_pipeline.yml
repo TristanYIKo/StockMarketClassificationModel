@@ -92,15 +92,20 @@ jobs:
           fi
 
       - name: Generate predictions
+        # Fits today's model per horizon on every label known by today's close
+        # (one fit each, seconds), scores today, and discards it.
         run: python -m ml.src.predict.predict --latest
 
       - name: Resolve matured predictions
         # Fills outcome_close / actual_return / y_true for calls whose target
         # session has now closed. Separate from generation because a 20d call
-        # resolves twenty sessions after it was made.
+        # resolves twenty sessions after it was made. Writes outcome columns
+        # only; a stored call is never re-scored.
         run: python -m ml.src.predict.predict --resolve
 
       - name: Backfill predictions (manual runs only)
+        # Walk-forward: every day is scored by its own model, fit on labels
+        # known by that day's close.
         if: inputs.backfill_predictions_from != ''
         run: python -m ml.src.predict.predict --backfill "${{ inputs.backfill_predictions_from }}"
 
