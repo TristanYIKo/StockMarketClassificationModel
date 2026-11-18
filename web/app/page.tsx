@@ -28,6 +28,59 @@ function Notice({ title, body }: { title: string; body: React.ReactNode }) {
   );
 }
 
+/**
+ * How a call is produced, in three steps. The point a reader most needs and
+ * cannot infer from the numbers: no call ever saw its own outcome.
+ */
+function MethodNote() {
+  const steps = [
+    {
+      n: "1",
+      title: "Only what was known that evening",
+      body: "After each close, a fresh model is trained from scratch on past days whose outcome was already settled by then: everything up to one, five or twenty sessions earlier. Economic data counts from the day it is published, not the day it describes.",
+    },
+    {
+      n: "2",
+      title: "One model, one day",
+      body: "That model makes the four calls for that day only, then is thrown away. Tomorrow's calls come from tomorrow's model, which has one more day of history.",
+    },
+    {
+      n: "3",
+      title: "History made the same way",
+      body: "Every past call on this page was produced by that same day-by-day process, then scored against what the market actually did. Nothing here was fit to the outcomes it is graded on.",
+    },
+  ];
+  return (
+    <section className="card p-5" aria-labelledby="method-heading">
+      <h2 id="method-heading" className="text-sm font-semibold text-ink">
+        How each call is made
+      </h2>
+      <ol className="mt-4 grid gap-4 md:grid-cols-3">
+        {steps.map((s) => (
+          <li key={s.n} className="flex gap-3">
+            <span
+              aria-hidden
+              className="flex size-6 shrink-0 items-center justify-center rounded-full border border-line text-[11px] font-semibold text-ink-muted"
+            >
+              {s.n}
+            </span>
+            <div>
+              <p className="text-[13px] font-medium text-ink">{s.title}</p>
+              <p className="mt-1 text-[12px] leading-relaxed text-ink-faint">{s.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-ink-faint">
+        Inputs: price, volatility and volume patterns, rates and credit spreads, the Fed
+        balance sheet, VIX, other asset classes, and FOMC/CPI/jobs-report dates. Which
+        algorithm each horizon uses, and where its UP/DOWN line sits, was chosen on 2024
+        data before any of the calls scored here.
+      </p>
+    </section>
+  );
+}
+
 export default async function Page({
   searchParams,
 }: {
@@ -37,8 +90,7 @@ export default async function Page({
   const symbol: Symbol = isSymbol(params.symbol) ? params.symbol : "SPY";
   const [data, quotes] = await Promise.all([getDashboard(symbol), getQuotes()]);
   const quote = quotes.find((q) => q.symbol === symbol);
-
-  const modelName = Object.values(data.latest)[0]?.model_name;
+  const accuracyFor = (h: (typeof HORIZONS)[number]) => data.accuracy.find((a) => a.horizon === h);
 
   return (
     <div className="min-h-screen">
@@ -66,8 +118,8 @@ export default async function Page({
                 </span>
               </h1>
               <p className="mt-1.5 text-sm text-ink-faint">
-                Direction classifier across three horizons
-                {modelName ? ` · ${modelName.replace(/_/g, " ")}` : ""}
+                Will it close higher in 1, 5 and 20 trading days? One call per horizon, made
+                after each close.
               </p>
             </div>
 
@@ -116,7 +168,7 @@ export default async function Page({
 
         <section aria-label="Current outlook" className="grid gap-4 md:grid-cols-3">
           {HORIZONS.map((h) => (
-            <HorizonCard key={h} horizon={h} prediction={data.latest[h]} />
+            <HorizonCard key={h} horizon={h} prediction={data.latest[h]} accuracy={accuracyFor(h)} />
           ))}
         </section>
 
@@ -124,19 +176,11 @@ export default async function Page({
 
         <SignalChart bars={data.bars} predictions={data.history} />
 
-        <HistoryTable rows={data.history} />
+        <HistoryTable rows={data.history} lastBarDate={data.lastBarDate} />
 
-        <footer className="space-y-3 pt-4 text-xs leading-relaxed text-ink-faint">
-          <p className="max-w-3xl">
-            <span className="font-medium text-ink-muted">How to read this.</span> Each model
-            answers one question: will the close {" "}
-            {HORIZONS.map((h) => h.replace("d", "")).join(", ")} trading days from the
-            as-of date be higher than the close on that date? Probabilities come from a
-            classifier trained on price, volatility, macro, cross-asset and calendar
-            features, with a decision threshold tuned on a held-out 2024 validation year.
-            Accuracy is shown next to the always-up baseline because these indices rise
-            far more often than they fall.
-          </p>
+        <MethodNote />
+
+        <footer className="space-y-3 pt-2 text-xs leading-relaxed text-ink-faint">
           <p className="max-w-3xl">
             Research project. Not investment advice, not a recommendation, and not a
             solicitation to trade.

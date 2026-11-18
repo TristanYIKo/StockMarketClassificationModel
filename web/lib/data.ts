@@ -9,10 +9,19 @@ import {
   Quote,
   SYMBOLS,
   Symbol,
+  Verdict,
 } from "@/lib/types";
 
-/** How many predictions per horizon back the table, chart markers and hit rate. */
-const HISTORY_PER_HORIZON = 200;
+/**
+ * How many predictions per horizon back the table, chart markers and hit rate.
+ * The out-of-sample record starts 2025-01-02 (~250 calls a year per horizon),
+ * so this covers all of it; scoring only the newest 200 would quietly drop most
+ * of the evidence. PostgREST caps a response at 1000 rows.
+ */
+const HISTORY_PER_HORIZON = 1000;
+
+/** Independent events needed before a verdict means anything. */
+const MIN_EVENTS_FOR_VERDICT = 30;
 const BAR_WINDOW = 180;
 
 /**
@@ -49,6 +58,28 @@ function summarise(rows: Prediction[], horizon: Horizon): Accuracy {
         2
       : null;
 
+  // Distinct as-of dates divided by the horizon: overlapping windows and four
+  // correlated ETFs mean the row count badly overstates the sample.
+  const events = resolved.length
+    ? Math.max(
+        1,
+        Math.floor(new Set(resolved.map((r) => r.as_of_date)).size / HORIZON_DAYS[horizon]),
+      )
+    : null;
+
+  // 95% interval on balanced accuracy: 1.96 x the standard error of a coin flip
+  // on the effective sample -- the same floor the trainer uses. Deliberately the
+  // null-hypothesis SE, so the band answers "could a coin have done this?"
+  const ci95 = events ? 1.96 * (0.5 / Math.sqrt(events)) : null;
+
+  let verdict: Verdict = "too-few";
+  if (balanced !== null && events !== null && ci95 !== null && events >= MIN_EVENTS_FOR_VERDICT) {
+    verdict =
+      balanced - ci95 > 0.5 ? "beats-chance" : balanced + ci95 < 0.5 ? "worse" : "chance";
+  }
+
+  const dates = resolved.map((r) => r.as_of_date).sort();
+
   return {
     horizon,
     resolved: resolved.length,
@@ -59,15 +90,12 @@ function summarise(rows: Prediction[], horizon: Horizon): Accuracy {
     upRate: forHorizon.length
       ? forHorizon.filter((r) => r.pred_class === 1).length / forHorizon.length
       : null,
-    // Distinct as-of dates divided by the horizon: overlapping windows and four
-    // correlated ETFs mean the row count badly overstates the sample.
-    effectiveEvents: resolved.length
-      ? Math.max(
-          1,
-          Math.floor(new Set(resolved.map((r) => r.as_of_date)).size / HORIZON_DAYS[horizon]),
-        )
-      : null,
+    effectiveEvents: events,
     avgConfidence: conf,
+    ci95,
+    verdict,
+    firstDate: dates[0] ?? null,
+    lastDate: dates.at(-1) ?? null,
   };
 }
 

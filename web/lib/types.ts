@@ -68,7 +68,24 @@ export type Accuracy = {
    */
   effectiveEvents: number | null;
   avgConfidence: number | null;
+  /**
+   * Half-width of the 95% interval on balanced accuracy, sized on the
+   * independent-event count (1.96 x the standard error of a coin flip on that
+   * many events). The verdict is only "beats chance" when the whole interval
+   * clears 50%.
+   */
+  ci95: number | null;
+  verdict: Verdict;
+  /** First and last as-of dates of the resolved calls being scored. */
+  firstDate: string | null;
+  lastDate: string | null;
 };
+
+/**
+ * What the track record supports, decided by the interval rather than the
+ * point estimate: 52.8% on ~190 independent events is +/-7 points of noise.
+ */
+export type Verdict = "beats-chance" | "chance" | "worse" | "too-few";
 
 export type Dashboard = {
   symbol: Symbol;
