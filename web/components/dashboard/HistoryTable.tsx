@@ -5,17 +5,31 @@ import { HORIZONS, HORIZON_LABEL, Horizon, Prediction } from "@/lib/types";
 import { shortDate, signedPct, usd, pct } from "@/lib/format";
 import { Segmented } from "@/components/ui/segmented";
 
-export function HistoryTable({ rows }: { rows: Prediction[] }) {
-  const [horizon, setHorizon] = useState<Horizon>("1d");
+const PAGE = 30;
 
-  const filtered = useMemo(
+export function HistoryTable({
+  rows,
+  lastBarDate,
+}: {
+  rows: Prediction[];
+  lastBarDate: string | null;
+}) {
+  const [horizon, setHorizon] = useState<Horizon>("1d");
+  const [shown, setShown] = useState(PAGE);
+
+  const all = useMemo(
     () =>
       rows
         .filter((r) => r.horizon === horizon)
-        .sort((a, b) => b.as_of_date.localeCompare(a.as_of_date))
-        .slice(0, 60),
+        .sort((a, b) => b.as_of_date.localeCompare(a.as_of_date)),
     [rows, horizon],
   );
+  const filtered = all.slice(0, shown);
+
+  const changeHorizon = (h: Horizon) => {
+    setHorizon(h);
+    setShown(PAGE);
+  };
 
   return (
     <section className="card overflow-hidden" aria-labelledby="history-heading">
@@ -25,14 +39,14 @@ export function HistoryTable({ rows }: { rows: Prediction[] }) {
             Prediction history
           </h2>
           <p className="mt-0.5 text-[11px] text-ink-faint">
-            Each row is one call and the outcome it was scored against
+            Each row is one call and the outcome it was scored against · {all.length} calls
           </p>
         </div>
 
         <Segmented
           label="Horizon"
           value={horizon}
-          onChange={setHorizon}
+          onChange={changeHorizon}
           options={HORIZONS.map((h) => ({ value: h, label: HORIZON_LABEL[h] }))}
         />
       </header>
@@ -44,7 +58,7 @@ export function HistoryTable({ rows }: { rows: Prediction[] }) {
               <th scope="col" className="px-5 py-2.5 font-medium">Predicted on</th>
               <th scope="col" className="px-5 py-2.5 font-medium">Resolves</th>
               <th scope="col" className="px-5 py-2.5 font-medium">Call</th>
-              <th scope="col" className="px-5 py-2.5 text-right font-medium">Conf.</th>
+              <th scope="col" className="px-5 py-2.5 text-right font-medium">Lean</th>
               <th scope="col" className="px-5 py-2.5 text-right font-medium">Entry</th>
               <th scope="col" className="px-5 py-2.5 text-right font-medium">Outcome</th>
               <th scope="col" className="px-5 py-2.5 text-right font-medium">Return</th>
@@ -62,6 +76,10 @@ export function HistoryTable({ rows }: { rows: Prediction[] }) {
               filtered.map((r) => {
                 const isUp = r.pred_class === 1;
                 const pending = r.y_true === null;
+                // Unresolved although its target session has already closed:
+                // a price bar is missing, not an outcome still to come.
+                const noData =
+                  pending && lastBarDate !== null && r.target_date <= lastBarDate;
 
                 return (
                   <tr
@@ -104,7 +122,14 @@ export function HistoryTable({ rows }: { rows: Prediction[] }) {
                       {signedPct(r.actual_return)}
                     </td>
                     <td className="px-5 py-2.5 text-right">
-                      {pending ? (
+                      {noData ? (
+                        <span
+                          className="text-[11px] text-ink-faint"
+                          title="The target session has closed but a price is missing; it resolves once the data is repaired"
+                        >
+                          No price data
+                        </span>
+                      ) : pending ? (
                         <span className="text-[11px] text-pending">Pending</span>
                       ) : r.is_correct ? (
                         <span className="text-[11px] font-medium text-up">Hit</span>
@@ -119,6 +144,21 @@ export function HistoryTable({ rows }: { rows: Prediction[] }) {
           </tbody>
         </table>
       </div>
+
+      {all.length > shown && (
+        <div className="border-t border-line p-3 text-center">
+          <button
+            type="button"
+            onClick={() => setShown((n) => n + PAGE * 2)}
+            className="rounded-md px-3 py-1.5 text-[12px] font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            Show {Math.min(PAGE * 2, all.length - shown)} more
+            <span className="ml-1.5 text-ink-faint">
+              ({shown} of {all.length})
+            </span>
+          </button>
+        </div>
+      )}
     </section>
   );
 }

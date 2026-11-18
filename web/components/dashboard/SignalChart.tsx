@@ -35,8 +35,8 @@ function SignalDot(props: {
 
   const up = payload.call === 1;
   const fill = up ? "var(--color-up)" : "var(--color-down)";
-  const y = up ? cy - 7 : cy + 7;
-  const r = 3.4;
+  const y = up ? cy - 8 : cy + 8;
+  const r = 4; // 8px marker: the floor for a mark meant to be read
   const d = up
     ? `M${cx},${y - r} L${cx + r},${y + r * 0.75} L${cx - r},${y + r * 0.75} Z`
     : `M${cx},${y + r} L${cx + r},${y - r * 0.75} L${cx - r},${y - r * 0.75} Z`;
@@ -70,7 +70,7 @@ function ChartTooltip({
       <p className="mt-1 tnum text-ink-muted">Close {usd(p.close)}</p>
       {p.call && (
         <p className={`mt-1 font-medium ${p.call === 1 ? "text-up" : "text-down"}`}>
-          Called {p.call === 1 ? "UP" : "DOWN"} · {pct(p.confidence, 0)}
+          Called {p.call === 1 ? "UP" : "DOWN"} · lean {pct(p.confidence, 0)}
           {p.correct === null || p.correct === undefined
             ? " · pending"
             : p.correct
@@ -157,22 +157,21 @@ export function SignalChart({
                 width={56}
                 tickFormatter={(v: number) => `$${Math.round(v)}`}
               />
-              <Tooltip
-                content={<ChartTooltip />}
-                cursor={{ stroke: "var(--color-line)", strokeDasharray: "4 4" }}
-              />
+              <Tooltip content={<ChartTooltip />} cursor={{ stroke: "var(--color-ink-faint)", strokeWidth: 1 }} />
+              {/* Linear, not monotone: a smoothed curve draws prices between
+                  sessions that never traded. */}
               <Area
-                type="monotone"
+                type="linear"
                 dataKey="close"
                 stroke="none"
                 fill="url(#priceFill)"
                 isAnimationActive={false}
               />
               <Line
-                type="monotone"
+                type="linear"
                 dataKey="close"
                 stroke="var(--color-accent)"
-                strokeWidth={1.75}
+                strokeWidth={2}
                 dot={<SignalDot />}
                 activeDot={{ r: 4, fill: "var(--color-ink)", stroke: "var(--color-base)", strokeWidth: 2 }}
                 isAnimationActive={false}
@@ -191,7 +190,7 @@ export function SignalChart({
           <span className="inline-block h-0 w-0 border-x-4 border-t-[7px] border-x-transparent border-t-down" />
           Called down
         </span>
-        <span>Brighter = higher confidence · faded = wrong call</span>
+        <span>Brighter = stronger lean · faded = wrong call · marked on the day each call was made</span>
       </div>
     </section>
   );

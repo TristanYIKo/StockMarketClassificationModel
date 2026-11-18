@@ -1,5 +1,13 @@
-import { HORIZON_LABEL, Horizon, Prediction } from "@/lib/types";
+import { Accuracy, HORIZON_LABEL, Horizon, Prediction } from "@/lib/types";
 import { pct, shortDate, usd } from "@/lib/format";
+import { VerdictBadge } from "@/components/dashboard/VerdictBadge";
+
+const MODEL_LABEL: Record<string, string> = {
+  logistic_regression: "Logistic regression",
+  random_forest: "Random forest",
+  lightgbm: "LightGBM",
+  xgboost: "XGBoost",
+};
 
 /**
  * Split probability bar.
@@ -44,9 +52,11 @@ function ProbabilityBar({ pUp, pDown }: { pUp: number; pDown: number }) {
 export function HorizonCard({
   horizon,
   prediction,
+  accuracy,
 }: {
   horizon: Horizon;
   prediction?: Prediction;
+  accuracy?: Accuracy;
 }) {
   if (!prediction) {
     return (
@@ -85,36 +95,60 @@ export function HorizonCard({
         className={`absolute inset-x-0 top-0 h-px bg-gradient-to-r to-transparent ${tone.rule}`}
       />
 
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-semibold text-ink">{HORIZON_LABEL[horizon]}</h3>
-          <p className="mt-0.5 text-[11px] text-ink-faint">
-            Resolves {shortDate(prediction.target_date)}
-          </p>
-        </div>
-        <span
-          className={`rounded-md border px-2.5 py-1 text-[11px] font-bold tracking-wider ${tone.chip}`}
-        >
-          {isUp ? "UP" : "DOWN"}
-        </span>
+      <header>
+        <h3 className="text-sm font-semibold text-ink">{HORIZON_LABEL[horizon]}</h3>
+        <p className="mt-0.5 text-[11px] text-ink-faint">
+          Close on {shortDate(prediction.target_date)}
+        </p>
       </header>
 
-      <div className="mt-6 flex items-baseline gap-2">
-        <span className={`text-[2.75rem] font-semibold leading-none tnum ${tone.text}`}>
-          {pct(prediction.confidence, 0)}
-        </span>
-        <span className="text-[11px] font-medium uppercase tracking-widest text-ink-faint">
-          confidence
-        </span>
+      {/* The call is the headline. The lean is secondary on purpose: it is a
+          rescaled score, not a calibrated probability, and the model behind
+          it has not beaten chance -- a giant "82%" would say otherwise. */}
+      <div className="mt-5 flex items-baseline justify-between gap-3">
+        <p className={`text-[2.5rem] font-semibold leading-none tracking-tight ${tone.text}`}>
+          {isUp ? "Up" : "Down"}
+        </p>
+        <p className="text-right text-[11px] leading-tight text-ink-faint">
+          lean
+          <span className="block text-base font-semibold text-ink-muted">
+            {pct(prediction.confidence, 0)}
+          </span>
+        </p>
       </div>
 
-      <div className="mt-5">
+      <div className="mt-4">
         <ProbabilityBar pUp={prediction.p_up} pDown={prediction.p_down} />
+        <p className="mt-2 text-[10.5px] leading-snug text-ink-faint">
+          Model score, rescaled so 50% is its decision line. Not a probability.
+        </p>
       </div>
 
-      <footer className="mt-5 flex items-center justify-between border-t border-line pt-3 text-[11px] text-ink-faint">
-        <span>From {shortDate(prediction.as_of_date)} close</span>
-        <span className="tnum text-ink-muted">{usd(prediction.as_of_close)}</span>
+      {accuracy && accuracy.balancedAccuracy !== null && (
+        <div className="mt-4 rounded-md bg-surface-2 px-3 py-2.5">
+          <VerdictBadge verdict={accuracy.verdict} size="xs" />
+          <p className="mt-1.5 text-[11px] leading-snug text-ink-faint">
+            Past {horizon.replace("d", "-day")} calls{" "}
+            <span className="font-medium text-ink-muted">
+              {pct(accuracy.balancedAccuracy, 1)}
+            </span>{" "}
+            balanced accuracy
+            {accuracy.ci95 !== null && <> ±{(accuracy.ci95 * 100).toFixed(1)} pts</>}, ~
+            {accuracy.effectiveEvents} independent outcomes
+          </p>
+        </div>
+      )}
+
+      <footer className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3 text-[11px] text-ink-faint">
+        <span
+          className="min-w-0 truncate"
+          title="Refit from scratch each evening on outcomes already known by that close"
+        >
+          {MODEL_LABEL[prediction.model_name] ?? prediction.model_name.replace(/_/g, " ")}
+        </span>
+        <span className="shrink-0">
+          from <span className="tnum text-ink-muted">{usd(prediction.as_of_close)}</span>
+        </span>
       </footer>
     </article>
   );
