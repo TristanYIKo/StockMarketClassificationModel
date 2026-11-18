@@ -14,6 +14,21 @@ whatever the ETL loaded last.
 Every model is fit on internal labels 0 = DOWN, 1 = UP and wrapped in
 DirectionModel, which restores the external -1/1 convention and guarantees
 predict_proba returns [p_down, p_up].
+
+Two different fits come out of a run, and they answer different questions:
+
+  * The candidate models are fit on the fixed train window and judged on the
+    fixed validation window. That is how an algorithm and a threshold get
+    chosen, and the frozen test scores in the report come from these fits.
+  * The selected algorithm is never served frozen. Every day it is refit from
+    scratch on the labels known by that day's close (fit_through), scores that
+    one day, and is discarded. Without this the splits pin training to 2023
+    (2021 at 20d), so a "monthly retrain" would refit the same old window
+    forever and never see a recent market.
+
+The report scores the selected model walk-forward over the test period with
+that same one-model-per-day procedure (walk_forward), because that, not the
+frozen fit, is the process the site is actually serving.
 """
 
 from __future__ import annotations
@@ -22,8 +37,9 @@ import argparse
 import json
 import logging
 import os
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 import joblib
 import numpy as np
@@ -50,6 +66,7 @@ logger = logging.getLogger(__name__)
 HORIZONS = ("1d", "5d", "20d")
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ARTIFACTS = os.path.join(ROOT, "artifacts")
+DEFAULT_CONFIG = os.path.join(ROOT, "config", "model_config.yaml")
 
 # Never features: identifiers, the price denominator, and every label/outcome.
 NON_FEATURES = {"symbol", "date", "close"}
@@ -306,6 +323,197 @@ def build_estimator(name: str, cfg: dict):
     raise ValueError(f"Unknown model: {name}")
 
 
+def fit_estimator(name: str, cfg: dict, X, y_int):
+    """Build and fit one learner on internal 0/1 labels."""
+    est = build_estimator(name, cfg)
+    if name == "xgboost":
+        # XGBClassifier has no class_weight; this is its "balanced" equivalent.
+        # It must come from the rows THIS fit sees, so a refit on a different
+        # window gets its own weight rather than inheriting a stale one.
+        pos_weight = float((y_int == 0).sum() / max((y_int == 1).sum(), 1))
+        est.set_params(scale_pos_weight=pos_weight)
+    est.fit(X, y_int)
+    return est
+
+
+def make_preprocessor(cfg: dict) -> TimeSeriesPreprocessor:
+    return TimeSeriesPreprocessor(
+        drop_features_threshold=cfg["preprocessing"]["missing_threshold"],
+        imputation_strategy=cfg["preprocessing"]["imputation_strategy"],
+        scaling=False,
+    )
+
+
+@contextmanager
+def _quiet_preprocessor():
+    """The preprocessor logs a page per fit; a walk-forward does dozens of fits."""
+    lg = logging.getLogger("ml.src.utils.preprocess")
+    old = lg.level
+    lg.setLevel(logging.WARNING)
+    try:
+        yield
+    finally:
+        lg.setLevel(old)
+
+
+def last_trainable_date(dates: np.ndarray, cutoff, horizon_days: int) -> Optional[pd.Timestamp]:
+    """
+    The newest as-of date whose h-session label was already decided at `cutoff`.
+
+    A row's label is the close `horizon_days` sessions later, so at the close of
+    `cutoff` only rows at least that many sessions older have a known answer.
+    Training on anything newer would be fitting to a future the model could
+    not have seen when it was fit -- the same leak purge_boundary() closes
+    between splits, applied to a moving cutoff.
+    """
+    known = dates[dates <= np.datetime64(pd.Timestamp(cutoff))]
+    if len(known) <= horizon_days:
+        return None
+    return pd.Timestamp(known[-1 - horizon_days])
+
+
+def fit_through(df: pd.DataFrame, horizon: str, name: str, threshold: float,
+                cfg: dict, cutoff) -> Tuple[DirectionModel, TimeSeriesPreprocessor, dict]:
+    """
+    Refit an already-selected model on every label known at `cutoff`.
+
+    Only the training window moves. The algorithm and the decision threshold
+    were settled on the fixed validation window and are deliberately not
+    revisited: re-tuning them on the newest data would leave nothing held out
+    to judge them on.
+
+    `df` is the full dataset, labelled and unlabelled rows alike; the session
+    calendar comes from its dates.
+    """
+    target = f"y_class_{horizon}"
+    h_days = HORIZON_DAYS[horizon]
+    dates = np.sort(df["date"].unique())
+    cutoff = pd.Timestamp(cutoff)
+    last = last_trainable_date(dates, cutoff, h_days)
+    if last is None:
+        raise ValueError(f"No {horizon} labels are known by {cutoff.date()}")
+
+    start = pd.to_datetime(cfg["splits"]["train_start"])
+    rows = df[(df["date"] >= start) & (df["date"] <= last) & df[target].notna()]
+    feats = feature_columns(df)
+
+    pre = make_preprocessor(cfg)
+    with _quiet_preprocessor():
+        X = pre.fit_transform(rows[feats])
+    y_int = (rows[target].astype(int) == 1).astype(int)
+    est = fit_estimator(name, cfg, X, y_int)
+
+    model = DirectionModel(est, pre.get_feature_names(), horizon,
+                           f"{name}_{horizon}", threshold=threshold)
+    info = {
+        "cutoff": cutoff.date().isoformat(),
+        "labels_through": last.date().isoformat(),
+        "rows": int(len(rows)),
+        "n_eff": effective_n(rows, h_days),
+    }
+    return model, pre, info
+
+
+def walk_forward(df: pd.DataFrame, horizon: str, name: str, threshold: float,
+                 cfg: dict, start, end=None, log_every: int = 50) -> pd.DataFrame:
+    """
+    One model per day. For every session d from `start`:
+
+      1. fit a fresh preprocessor and model on the rows whose label had been
+         decided by the close of d -- as-of dates at least h sessions before d;
+      2. score ONLY day d (one row per symbol) with that model, then discard it.
+
+    No day is scored by a model that saw its own outcome, any later date, or
+    even a later day's features: the imputer medians, the dropped-feature list
+    and the model weights are all re-derived from history alone, every day.
+    This is also exactly what the daily job does live, so a history rebuilt
+    from this is the same process the site serves, not a reconstruction.
+
+    Returns one row per (symbol, day): the raw p_up, the call, the date the
+    model's training labels ran through, how many rows it was fit on, and the
+    true label where it is already known.
+    """
+    import time
+
+    target = f"y_class_{horizon}"
+    h_days = HORIZON_DAYS[horizon]
+    dates = np.sort(df["date"].unique())
+    days = dates[dates >= np.datetime64(pd.Timestamp(start))]
+    if end is not None:
+        days = days[days <= np.datetime64(pd.Timestamp(end))]
+
+    out = []
+    t0 = time.time()
+    for i, d in enumerate(days):
+        d = pd.Timestamp(d)
+        model, pre, info = fit_through(df, horizon, name, threshold, cfg, d)
+
+        # The guarantee, checked rather than assumed: the newest training row's
+        # label resolves on d at the latest, and nothing dated d or later was fit.
+        labels_through = pd.Timestamp(info["labels_through"])
+        assert labels_through < d, f"{horizon} model for {d.date()} trained on {labels_through.date()}"
+
+        rows = df[df["date"] == d]
+        with _quiet_preprocessor():
+            X = pre.transform(rows[pre.get_feature_names()])
+        p_up = model.predict_proba(X)[:, 1]
+        out.append(pd.DataFrame({
+            "symbol": rows["symbol"].values,
+            "as_of_date": d,
+            "labels_through": labels_through,
+            "train_rows": info["rows"],
+            "p_up_raw": p_up,
+            "threshold": float(threshold),
+            "pred_class": np.where(p_up >= threshold, 1, -1),
+            "y_true": rows[target].values,
+        }))
+        if log_every and (i + 1) % log_every == 0:
+            rate = (time.time() - t0) / (i + 1)
+            logger.info("    %s day %d/%d (%s)  ~%.0fs left", horizon, i + 1, len(days),
+                        d.date(), rate * (len(days) - i - 1))
+
+    if not out:
+        return pd.DataFrame()
+    wf = pd.concat(out, ignore_index=True)
+    wf["correct"] = np.where(wf["y_true"].notna(), wf["pred_class"] == wf["y_true"], np.nan)
+    return wf
+
+
+def walk_forward_metrics(wf: pd.DataFrame, horizon: str) -> Optional[Dict]:
+    """Score each day's call against that day's own outcome, then summarise."""
+    lab = wf[wf["y_true"].notna()]
+    if lab.empty:
+        return None
+    y = lab["y_true"].astype(int)
+    y_bin = (y == 1).astype(int)
+    per_day = lab.groupby("as_of_date")["correct"].mean()
+    return {
+        "n": int(len(lab)),
+        "days": int(lab["as_of_date"].nunique()),
+        "n_eff": effective_n(lab.rename(columns={"as_of_date": "date"}), HORIZON_DAYS[horizon]),
+        "accuracy": float(accuracy_score(y, lab["pred_class"])),
+        "balanced_accuracy": float(balanced_accuracy_score(y, lab["pred_class"])),
+        "roc_auc": float(roc_auc_score(y_bin, lab["p_up_raw"])) if y_bin.nunique() > 1 else float("nan"),
+        "up_rate_pred": float((lab["pred_class"] == 1).mean()),
+        "eval_up_rate": float(y_bin.mean()),
+        "share_days_all_correct": float((per_day == 1).mean()),
+        "share_days_all_wrong": float((per_day == 0).mean()),
+    }
+
+
+def save_walk_forward(wf: pd.DataFrame, horizon: str, name: str) -> str:
+    """Every day's call, with the date its model's training data ended. Auditable."""
+    out = os.path.join(ARTIFACTS, "reports", horizon)
+    os.makedirs(out, exist_ok=True)
+    path = os.path.join(out, "walk_forward.csv")
+    w = wf.copy()
+    w.insert(2, "model_name", name)
+    for c in ("as_of_date", "labels_through"):
+        w[c] = pd.to_datetime(w[c]).dt.date.astype(str)
+    w.to_csv(path, index=False, float_format="%.6f")
+    return path
+
+
 def train_horizon(horizon: str, cfg: dict, df: pd.DataFrame) -> Dict:
     target = f"y_class_{horizon}"
     logger.info("=" * 72)
@@ -351,11 +559,7 @@ def train_horizon(horizon: str, cfg: dict, df: pd.DataFrame) -> Dict:
     feats = feature_columns(data)
     logger.info("Feature count before preprocessing: %d", len(feats))
 
-    pre = TimeSeriesPreprocessor(
-        drop_features_threshold=cfg["preprocessing"]["missing_threshold"],
-        imputation_strategy=cfg["preprocessing"]["imputation_strategy"],
-        scaling=False,
-    )
+    pre = make_preprocessor(cfg)
     X_tr = pre.fit_transform(tr[feats])
     X_va = pre.transform(va[feats], split_name="val")
     X_te = pre.transform(te[feats], split_name="test")
@@ -371,12 +575,7 @@ def train_horizon(horizon: str, cfg: dict, df: pd.DataFrame) -> Dict:
         logger.info("-" * 72)
         logger.info("Training %s (%s)", name, horizon)
 
-        est = build_estimator(name, cfg)
-        if name == "xgboost":
-            pos_weight = float((y_tr_int == 0).sum() / max((y_tr_int == 1).sum(), 1))
-            est.set_params(scale_pos_weight=pos_weight)
-        est.fit(X_tr, y_tr_int)
-
+        est = fit_estimator(name, cfg, X_tr, y_tr_int)
         model = DirectionModel(est, kept, horizon, f"{name}_{horizon}")
         model.threshold = tune_threshold(model, X_va, y_va, n_eff["val"])
         m = {
@@ -406,9 +605,29 @@ def train_horizon(horizon: str, cfg: dict, df: pd.DataFrame) -> Dict:
                 horizon, metric, best,
                 results[best]["val"][metric], results[best]["test"][metric])
 
-    write_pointer(horizon, best, results[best])
+    threshold = results[best]["val"]["threshold"]
+
+    # Score the selected model the way it is deployed: a fresh fit for every
+    # test day, on labels known by that day's close, scoring that day only.
+    logger.info("Walk-forward over the test period: one refit per day ...")
+    wf_rows = walk_forward(df, horizon, best, threshold, cfg, sp["test_start"])
+    wf = walk_forward_metrics(wf_rows, horizon) if not wf_rows.empty else None
+    if wf:
+        path = save_walk_forward(wf_rows, horizon, best)
+        logger.info("  daily refit  bal-acc %.4f  auc %.4f  calls UP %.1f%%  "
+                    "(%d days, n_eff %d)  vs frozen bal-acc %.4f  auc %.4f",
+                    wf["balanced_accuracy"], wf["roc_auc"], 100 * wf["up_rate_pred"],
+                    wf["days"], wf["n_eff"],
+                    results[best]["test"]["balanced_accuracy"], results[best]["test"]["roc_auc"])
+        logger.info("  per-day calls written to %s", path)
+        if wf["up_rate_pred"] > 0.90 or wf["up_rate_pred"] < 0.10:
+            logger.warning("  DEGENERATE walk-forward: one class %.1f%% of the time.",
+                           100 * max(wf["up_rate_pred"], 1 - wf["up_rate_pred"]))
+
+    write_pointer(horizon, best, results[best], walk_forward=wf)
     return {"horizon": horizon, "best_model": best, "results": results,
-            "n_eff": n_eff, "val_window": sp["val_sessions"]}
+            "n_eff": n_eff, "val_window": sp["val_sessions"],
+            "train_end": sp["train_end"], "walk_forward": wf}
 
 
 def save_model(model, preprocessor, name, horizon, cfg, metrics, feature_names):
@@ -431,8 +650,15 @@ def save_model(model, preprocessor, name, horizon, cfg, metrics, feature_names):
         json.dump(meta, fh, indent=2)
 
 
-def write_pointer(horizon: str, best: str, metrics: Dict):
-    """Record which model inference should load for this horizon."""
+def write_pointer(horizon: str, best: str, metrics: Dict,
+                  walk_forward: Optional[Dict] = None):
+    """
+    Record which algorithm and threshold inference uses for this horizon.
+
+    The daily job does not load a pickled model: it refits `model_name` on
+    every label known that day (`"refit": "daily"`). `artifact_dir` is the
+    frozen candidate the selection was made on, kept for inspection.
+    """
     path = os.path.join(ARTIFACTS, "models", "best_models.json")
     current = {}
     if os.path.exists(path):
@@ -449,6 +675,9 @@ def write_pointer(horizon: str, best: str, metrics: Dict):
         "test_roc_auc": metrics["test"]["roc_auc"],
         "threshold": metrics["val"]["threshold"],
     }
+    current[horizon]["refit"] = "daily"
+    if walk_forward:
+        current[horizon]["walk_forward_test"] = walk_forward
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(current, fh, indent=2)
@@ -475,6 +704,15 @@ def write_report(all_results: List[Dict]):
         "20 days and SPY/QQQ/DIA/IWM are near-copies, so 25,748 rows carry only a few",
         "hundred independent events. Every error bar is sized on the effective count.",
         "",
+        "**Two kinds of test score.** The candidate table scores models *frozen* at the",
+        "end of their training window -- that is how the algorithm and threshold are",
+        "chosen. The deployed model is not frozen: **every day it is refit from scratch**",
+        "on the labels known by that day's close, scores that one day, and is thrown",
+        "away. **As deployed** replays exactly that over the test period -- one model",
+        "per day, each day scored against its own outcome -- so it is the out-of-sample",
+        "record of what the site serves. Every one of those calls, with the date its",
+        "training data ended, is in `reports/<h>/walk_forward.csv`.",
+        "",
     ]
     for res in all_results:
         h = res["horizon"]
@@ -500,6 +738,26 @@ def write_report(all_results: List[Dict]):
                   f"Test baseline (majority class): {b['majority_class']:.4f} on {b['n']} rows; "
                   f"actual up-rate {b['eval_up_rate']:.4f}.",
                   ""]
+
+        wf = res.get("walk_forward")
+        if wf:
+            frozen_to = pd.Timestamp(res["train_end"]).date()
+            flag = " ⚠" if wf["up_rate_pred"] > 0.90 or wf["up_rate_pred"] < 0.10 else ""
+            lines += [f"**As deployed** ({res['best_model']}, test period):", "",
+                      "| Fit | Test bal-acc | Test AUC | Calls UP | Independent events |",
+                      "|---|---|---|---|---|",
+                      f"| Frozen, trained through {frozen_to} | {b['balanced_accuracy']:.4f} "
+                      f"| {b['roc_auc']:.4f} | {100 * b['up_rate_pred']:.1f}% "
+                      f"| {ne.get('test', '?')} |",
+                      f"| Refit daily ({wf['days']} separate models) | {wf['balanced_accuracy']:.4f} "
+                      f"| {wf['roc_auc']:.4f} | {100 * wf['up_rate_pred']:.1f}%{flag} "
+                      f"| {wf['n_eff']} |",
+                      "",
+                      f"Up-rate over these days: {wf['eval_up_rate']:.3f}. Days where all four "
+                      f"ETF calls were right: {100 * wf['share_days_all_correct']:.1f}%; all four "
+                      f"wrong: {100 * wf['share_days_all_wrong']:.1f}% -- the four move together, "
+                      f"so a day is closer to one event than four.",
+                      ""]
     path = os.path.join(ARTIFACTS, "reports", "model_report.md")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
@@ -511,7 +769,7 @@ def main():
     ap = argparse.ArgumentParser(description="Train direction models")
     ap.add_argument("--horizon", choices=HORIZONS)
     ap.add_argument("--all", action="store_true", help="Train every horizon")
-    ap.add_argument("--config", default=os.path.join(ROOT, "config", "model_config.yaml"))
+    ap.add_argument("--config", default=DEFAULT_CONFIG)
     ap.add_argument("--no-cache", action="store_true", help="Re-pull the dataset from Supabase")
     args = ap.parse_args()
 
@@ -540,8 +798,12 @@ def main():
     logger.info("TRAINING COMPLETE")
     for r in results:
         b = r["results"][r["best_model"]]["test"]
-        logger.info("  %-4s best=%-22s test acc %.4f (edge %+.4f)",
-                    r["horizon"], r["best_model"], b["accuracy"], b["edge_vs_majority"])
+        wf = r.get("walk_forward") or {}
+        logger.info("  %-4s best=%-22s frozen bal-acc %.4f auc %.4f | refit daily "
+                    "bal-acc %.4f auc %.4f calls UP %.1f%%",
+                    r["horizon"], r["best_model"], b["balanced_accuracy"], b["roc_auc"],
+                    wf.get("balanced_accuracy", float("nan")), wf.get("roc_auc", float("nan")),
+                    100 * wf.get("up_rate_pred", float("nan")))
 
 
 if __name__ == "__main__":

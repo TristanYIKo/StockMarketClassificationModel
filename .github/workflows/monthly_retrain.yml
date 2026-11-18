@@ -3,8 +3,11 @@ name: Monthly retrain
 # Retrains all three horizons on the full history and commits the refreshed
 # artifacts. Two jobs in one:
 #
-#   1. Models drift. Training data ends at the last ETL run, so a model that is
-#      never retrained slowly ages out of the regime it is predicting.
+#   1. It chooses the algorithm and decision threshold per horizon (on the
+#      fixed 2024 validation window) and scores that choice walk-forward over
+#      the test period: one model per day, each fit only on labels known by
+#      that day's close. The daily job refits the same way every evening, so
+#      what is served never stops learning from recent markets.
 #   2. GitHub disables scheduled workflows in repositories with no commit
 #      activity for 60 days. A scheduled run does NOT count as activity, but the
 #      commit this job pushes does -- so this is also what keeps the daily
@@ -30,7 +33,11 @@ permissions:
 jobs:
   retrain:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # The walk-forward fits one model per test day per horizon (~470 each, more
+    # every month). With the current winners -- logistic regression at 1d/5d,
+    # XGBoost at 20d -- that is ~45 minutes. A random-forest winner costs ~9s a
+    # fit, ~70 minutes per horizon, so the ceiling allows for the worst case.
+    timeout-minutes: 300
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
@@ -59,7 +66,10 @@ jobs:
       - name: Train all horizons
         run: python -m ml.src.train.train --all --no-cache
 
-      - name: Rebuild stored predictions with the new models
+      - name: Rebuild stored predictions walk-forward
+        # Every past day is scored by its own model, fit on labels known by
+        # that day's close. Reuses the per-day calls the training step just
+        # wrote to reports/<h>/walk_forward.csv, so nothing is fit twice.
         run: |
           python -m ml.src.predict.predict --backfill "${{ inputs.backfill_from || '2025-01-01' }}"
 

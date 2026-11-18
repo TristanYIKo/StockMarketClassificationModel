@@ -1,5 +1,6 @@
 import argparse
 from datetime import date, timedelta
+from typing import Optional
 import os
 import pandas as pd
 import pandas_market_calendars as mcal
@@ -47,6 +48,43 @@ def upsert_events(db: SupabaseDB, events_df: pd.DataFrame):
             db.client.table("events_calendar").upsert(item, on_conflict="date,event_type").execute()
 
 
+REPAIR_LOOKBACK_DAYS = 120
+
+
+def find_repair_start(db: SupabaseDB, nyse, latest: date) -> Optional[date]:
+    """
+    Earliest recent date whose stored bars are unusable, or None.
+
+    Two kinds of hole, both of which the forward-only start detection would
+    leave in place forever:
+      * a bar stored with no close (any asset) -- yfinance occasionally returns
+        the newest session with volume but NaN prices;
+      * a session missing for one of the four ETFs while the table as a whole
+        has moved past it. A gap is worse than it looks: labels are built by
+        shifting the close series, so a missing Monday silently turns Friday's
+        "next close" into Tuesday's.
+    """
+    since = latest - timedelta(days=REPAIR_LOOKBACK_DAYS)
+    sessions = set(nyse.schedule(start_date=since, end_date=latest).index.date)
+    etfs = set(ETLConfig.symbols)  # plain tuple default: ("SPY", "QQQ", "DIA", "IWM")
+    holes = []
+    for sym, asset_id in db.get_asset_id_map().items():
+        resp = (db.client.table("daily_bars").select("date,close")
+                .eq("asset_id", asset_id).gte("date", since.isoformat())
+                .order("date").execute())
+        stored = resp.data or []
+        holes += [date.fromisoformat(r["date"][:10]) for r in stored if r["close"] is None]
+        if sym in etfs and stored:
+            have = {date.fromisoformat(r["date"][:10]) for r in stored}
+            first = min(have)
+            holes += [d for d in sessions if first <= d <= latest and d not in have]
+    if not holes:
+        return None
+    earliest = min(holes)
+    print(f"  Found {len(holes)} unusable bar(s) since {since}; earliest {earliest}")
+    return earliest
+
+
 def run_etl(start: str, end: str, mode: str):
     db = SupabaseDB()
     nyse = mcal.get_calendar("NYSE")
@@ -78,22 +116,32 @@ def run_etl(start: str, end: str, mode: str):
             # Use the minimum date across tables to ensure consistency
             latest = min(last_dates)
             print(f"Last complete date in DB: {latest}")
-            
+
             # Find the next trading day after latest
             end_date_temp = date.fromisoformat(end)
             schedule = nyse.schedule(start_date=latest, end_date=end_date_temp)
-            
-            if len(schedule) <= 1:
+
+            # Holes behind the newest date are invisible to the logic above,
+            # which only ever moves forward. Rewind to the earliest one so the
+            # bad bars are re-fetched and every feature/label after them rebuilt.
+            repair = find_repair_start(db, nyse, latest)
+            if repair is not None:
+                start = repair.isoformat()
+                mode = "incremental"
+                print(f"Repair: re-loading from {start} to fill bars with no close or "
+                      f"missing sessions.")
+            elif len(schedule) <= 1:
                 # No new trading days
                 print(f"Database is up to date. Last date: {latest}, End date: {end_date_temp}")
                 print("No new trading days to process.")
                 return
             
-            # Get next trading day after latest
-            next_trading_day = schedule.index[1].date()
-            start = next_trading_day.isoformat()
-            print(f"Auto-detected update start date: {start} (next trading day after {latest})")
-            mode = "incremental"
+            if start is None:
+                # Get next trading day after latest
+                next_trading_day = schedule.index[1].date()
+                start = next_trading_day.isoformat()
+                print(f"Auto-detected update start date: {start} (next trading day after {latest})")
+                mode = "incremental"
         else:
             start = "2015-01-01"
             print(f"⚠️ No data in DB. Defaulting to backfill from {start}")

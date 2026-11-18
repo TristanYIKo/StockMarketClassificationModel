@@ -28,7 +28,28 @@ def download_ohlcv(symbol: str, start: str, end: str) -> pd.DataFrame:
     })
     df.index = pd.to_datetime(df.index).tz_localize(US_TZ).date
     df = df.reset_index().rename(columns={"index": "date"})
-    return df[["date", "open", "high", "low", "close", "adj_close", "volume"]]
+    return drop_incomplete_bars(df[["date", "open", "high", "low", "close", "adj_close", "volume"]], symbol)
+
+
+def drop_incomplete_bars(df: pd.DataFrame, symbol: str = "") -> pd.DataFrame:
+    """
+    Never store a bar without a close.
+
+    yfinance sometimes returns the newest session with volume but NaN prices.
+    Stored, that row is permanent -- the incremental ETL never re-fetches a date
+    it already has -- and it poisons everything downstream: the previous day's
+    label (its outcome close is NaN), the day's own label, and every rolling
+    feature whose window contains it, for up to 200 sessions. In Sep-Oct 2026
+    four such Mondays left ~26% of each day's features blank for two months.
+
+    Dropped instead, the date is simply missing, so the next run's auto-detected
+    start date falls on it and fetches it again once the vendor has the close.
+    """
+    bad = df["close"].isna()
+    if bad.any():
+        print(f"  ⚠️ {symbol}: dropping {int(bad.sum())} bar(s) with no close: "
+              f"{', '.join(str(d) for d in df.loc[bad, 'date'])} (will be re-fetched next run)")
+    return df[~bad].reset_index(drop=True)
 
 
 def download_actions(symbol: str, start: str, end: str) -> pd.DataFrame:

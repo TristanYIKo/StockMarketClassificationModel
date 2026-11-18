@@ -27,17 +27,20 @@ NYSE cal ─┘   (features,  (daily_bars,   (dataset       (per-horizon    (mod
 
 1. `run_etl.py --mode incremental` — auto-detects the last loaded session and
    pulls forward to today: OHLCV, macro series, cross-asset proxies, events,
-   engineered features, and labels.
-2. `python -m ml.src.predict.predict --latest` — one prediction per symbol ×
-   horizon from the newest feature row.
-3. `python -m ml.src.predict.predict --resolve` — fills in outcomes for calls
-   whose target session has since closed.
+   engineered features, and labels. It first looks back 120 days for bars with
+   no close or missing ETF sessions and, if it finds any, re-loads from there.
+2. `python -m ml.src.predict.predict --latest` — fits **today's model** per
+   horizon on every label known by today's close, scores today, discards it.
+3. `python -m ml.src.predict.predict --resolve` — writes outcomes onto stored
+   calls whose target session has since closed. Never re-scores a call.
 
 ### Monthly loop (`.github/workflows/monthly_retrain.yml`)
 
-Retrains all three horizons, rebuilds stored predictions, and commits the
-refreshed artifacts. The commit doubles as repo activity, which is what stops
-GitHub from disabling the daily schedule after 60 idle days.
+Chooses each horizon's algorithm and threshold on the fixed validation window,
+replays the daily process over the whole test period (one model per day),
+rebuilds stored predictions from that replay, and commits the refreshed
+artifacts. The commit doubles as repo activity, which is what stops GitHub from
+disabling the daily schedule after 60 idle days.
 
 ---
 
@@ -87,8 +90,10 @@ with the anon key, so migrations are always a manual step.
 | Train one horizon | `python -m ml.src.train.train --horizon 20d` |
 | Train all horizons | `python -m ml.src.train.train --all` |
 | Today's predictions | `python -m ml.src.predict.predict --latest` |
-| Rebuild history | `python -m ml.src.predict.predict --backfill 2025-01-01` |
+| Rebuild history (walk-forward) | `python -m ml.src.predict.predict --backfill 2025-01-01` |
 | Resolve outcomes | `python -m ml.src.predict.predict --resolve` |
+| Any of the above without writing | add `--dry-run` |
+| Prove no feature uses later dates | `python validate_no_lookahead.py` (`--control` to test the test) |
 | Run the site | `npm --prefix web run dev` |
 
 ---
@@ -102,7 +107,35 @@ relative to prices.
 
 **Splits.** Strictly chronological — train 2001–2023, validate 2024, test 2025
 onward. No random sampling, and the test window is never touched during
-selection or tuning.
+selection or tuning. These splits decide *which* model and threshold to use;
+they do not limit what the served model learns from (next paragraph).
+
+**One model per day.** The splits are pinned, so a model fit on the train
+window never sees anything after 2023 (late 2021 at 20D, whose validation window
+is longer). An earlier version served exactly that frozen fit, so the "monthly
+retrain" refit the same old window every month and never learned from a recent
+market. Now no model is ever served frozen. For every day `d` — today in the
+daily job, and every past day when history is rebuilt — `fit_through()`:
+
+1. takes only rows whose label was already decided at the close of `d`, i.e.
+   as-of dates at least `h` sessions before `d` (`last_trainable_date`);
+2. fits a fresh preprocessor (dropped-feature list, imputer medians) and a
+   fresh model on them;
+3. scores `d`'s four rows, one per ETF, and is discarded.
+
+`walk_forward()` asserts on every day that the model's newest training label is
+strictly before `d`. The per-day calls, each with the date its training data
+ended and the number of rows it was fit on, are written to
+`ml/artifacts/reports/<h>/walk_forward.csv`, so the property can be audited
+from the file rather than taken on trust. The four ETFs of one day share that
+day's model; pooling them is not a leak, since every row in the pool is history.
+
+**History is rebuilt the same way.** Scoring the past with one recent model
+would be in-sample, since it trained on that past. `--backfill` reuses the
+per-day calls from the retrain (or fits any day they do not cover), so the
+site's track record is produced by exactly the process that makes live calls.
+`--resolve` only writes outcomes onto stored calls and never re-scores them, so
+a recorded call cannot be rewritten after the fact.
 
 **Stationarity.** Raw price levels (`sma_200`, `close`, proxy closes) are replaced
 with scale-free equivalents such as `px_vs_sma_200`. SPY traded near 130 in 2001
@@ -166,18 +199,22 @@ the horizon (`horizon_splits()`), holding ~40 non-overlapping windows at each �
 
 ### Honest performance
 
-Out-of-sample (2025-01 onward), selected model per horizon:
+Out-of-sample, 2025-01-02 to 2026-11-16, scored exactly as deployed — one model
+per day, each fit only on labels known by that day's close (retrain of
+2026-11-17):
 
-| Horizon | Balanced acc | Test AUC | Calls UP | Base rate | Independent test events |
-|---|---|---|---|---|---|
-| 1D | **0.532** | 0.529 | 53% | 55% | 419 |
-| 5D | 0.498 | 0.522 | 38% | 58% | 83 |
-| 20D | 0.451 | 0.469 | 40% | 68% | **20** |
+| Horizon | Model | Balanced acc | AUC | Calls UP | Base rate | Independent events | ± 1 SE |
+|---|---|---|---|---|---|---|---|
+| 1D | logistic regression | 0.507 | 0.512 | 43% | 54% | 461 | 0.023 |
+| 5D | logistic regression | 0.475 | 0.475 | 57% | 56% | 91 | 0.052 |
+| 20D | XGBoost | 0.390 | 0.403 | 62% | 65% | **22** | 0.107 |
 
-**Only the 1D model shows any consistent discrimination**, and it is marginal
-(0.532 balanced accuracy, validation 0.530 and test 0.529 agreeing). 5D is at
-chance. 20D is below chance on 20 independent test events, which is too few to
-conclude anything either way.
+**None of the three is distinguishable from chance.** 1D sits 0.3 standard
+errors above 0.50, 5D 0.5 below, 20D 1.0 below on only 22 independent events.
+The marginal 1D edge reported in September (0.532) did not survive more test
+data and the FRED publication-lag fix. These figures also span 2026-09-14 to
+2026-11-16, when ~26% of each day's features were blank (see *A bar without a
+close is never stored*); the next retrain after the repair re-scores them.
 
 An earlier version of this README reported 20D balanced accuracy of 0.551 and
 called it "modest but real skill". That was wrong. It came from the leaked split
@@ -221,6 +258,35 @@ Two guards now:
 - `etl.transform_features_context.is_forbidden_feature` — a denylist applied both
   when writing features and when building the training set, so historical rows
   written before the fix are filtered on read.
+
+### Every feature for day T is computable at T's close
+
+`python validate_no_lookahead.py` proves it rather than asserting it: for 13
+cutoff days per symbol it rebuilds the features with the exact ETL transforms
+from history truncated at T and compares row T with the full-history build. All
+123 columns match for SPY, QQQ, DIA and IWM. `--control` plants a "tomorrow's
+close" column and confirms the test flags it — a check that cannot fail is not
+evidence.
+
+That test cannot see data stamped with a date *before it was published*, which
+is the FRED case: DGS2/DGS10/T10YIE, EFFR, HY OAS and WALCL are dated by
+observation but released the next business day (WALCL: Wednesday's level,
+Thursday 4:30pm ET). The historical backfill stored them same-day; the live job
+never has them in time. `ml/src/data/features.py` lags those columns one session
+on read, for training and inference alike. Removing that leak lowered 1D
+validation AUC from 0.530 to 0.524 — small, and in the direction a leak predicts.
+
+### A bar without a close is never stored
+
+yfinance occasionally returns the newest session with volume but NaN prices.
+Four Mondays in Sep–Oct 2026 were stored that way for 11 of 14 assets. Because
+the incremental load only moves forward, they were never re-fetched, and every
+rolling feature whose window contained one went blank: about 26% of each day's
+features from 2026-09-14 on, versus 1% before, and the adjacent Friday/Monday
+calls could not resolve. Now `drop_incomplete_bars` refuses to store such rows,
+and each run's `find_repair_start` looks back 120 days for empty closes or
+missing ETF sessions and re-loads from the earliest one, rebuilding the features
+and labels after it.
 
 ---
 
