@@ -2,34 +2,73 @@
   "1d": {
     "model_name": "logistic_regression",
     "artifact_dir": "logistic_regression_1d",
-    "selected_at": "2026-11-01T13:42:28.594226+00:00",
-    "val_accuracy": 0.5318725099601593,
-    "val_edge_vs_majority": -0.030876494023904466,
-    "test_accuracy": 0.5283964365256125,
-    "test_edge_vs_majority": -0.013363028953229383,
-    "test_roc_auc": 0.5115543739283872,
-    "threshold": 0.5
+    "selected_at": "2026-11-19T14:26:47.135857+00:00",
+    "val_accuracy": 0.500996015936255,
+    "val_edge_vs_majority": -0.06175298804780882,
+    "test_accuracy": 0.517515923566879,
+    "test_edge_vs_majority": -0.022292993630573243,
+    "test_roc_auc": 0.5196299585251418,
+    "threshold": 0.52,
+    "refit": "daily",
+    "walk_forward_test": {
+      "n": 1884,
+      "days": 471,
+      "n_eff": 471,
+      "accuracy": 0.4984076433121019,
+      "balanced_accuracy": 0.5028205625474205,
+      "roc_auc": 0.5044576683122783,
+      "up_rate_pred": 0.4447983014861996,
+      "eval_up_rate": 0.5398089171974523,
+      "share_days_all_correct": 0.2505307855626327,
+      "share_days_all_wrong": 0.25902335456475584
+    }
   },
   "5d": {
     "model_name": "logistic_regression",
     "artifact_dir": "logistic_regression_5d",
-    "selected_at": "2026-11-01T13:42:45.661662+00:00",
+    "selected_at": "2026-11-19T14:38:47.098031+00:00",
     "val_accuracy": 0.5506072874493927,
     "val_edge_vs_majority": -0.05060728744939269,
-    "test_accuracy": 0.4799107142857143,
-    "test_edge_vs_majority": -0.0892857142857143,
-    "test_roc_auc": 0.5109265467845169,
-    "threshold": 0.475
+    "test_accuracy": 0.4732334047109208,
+    "test_edge_vs_majority": -0.08404710920770875,
+    "test_roc_auc": 0.5164982977255383,
+    "threshold": 0.475,
+    "refit": "daily",
+    "walk_forward_test": {
+      "n": 1868,
+      "days": 467,
+      "n_eff": 93,
+      "accuracy": 0.48982869379014987,
+      "balanced_accuracy": 0.4836033392689338,
+      "roc_auc": 0.4851453176707821,
+      "up_rate_pred": 0.5524625267665952,
+      "eval_up_rate": 0.5572805139186295,
+      "share_days_all_correct": 0.22483940042826553,
+      "share_days_all_wrong": 0.23554603854389722
+    }
   },
   "20d": {
     "model_name": "xgboost",
     "artifact_dir": "xgboost_20d",
-    "selected_at": "2026-11-01T13:43:00.315620+00:00",
-    "val_accuracy": 0.5009615384615385,
-    "val_edge_vs_majority": -0.080448717948718,
-    "test_accuracy": 0.44399538106235564,
-    "test_edge_vs_majority": -0.20900692840646656,
-    "test_roc_auc": 0.4870382548390466,
-    "threshold": 0.495
+    "selected_at": "2026-11-19T14:50:17.356502+00:00",
+    "val_accuracy": 0.4855769230769231,
+    "val_edge_vs_majority": -0.09583333333333338,
+    "test_accuracy": 0.46626106194690264,
+    "test_edge_vs_majority": -0.17146017699115046,
+    "test_roc_auc": 0.5206570314413776,
+    "threshold": 0.5,
+    "refit": "daily",
+    "walk_forward_test": {
+      "n": 1808,
+      "days": 452,
+      "n_eff": 22,
+      "accuracy": 0.4358407079646018,
+      "balanced_accuracy": 0.40073489006441876,
+      "roc_auc": 0.412746039207378,
+      "up_rate_pred": 0.6001106194690266,
+      "eval_up_rate": 0.6377212389380531,
+      "share_days_all_correct": 0.2323008849557522,
+      "share_days_all_wrong": 0.3938053097345133
+    }
   }
 }
